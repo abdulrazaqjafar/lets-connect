@@ -66,6 +66,8 @@ services:
       - ./prisma.config.ts:/app/prisma.config.ts
       - ./package.json:/app/package.json
       - ./package-lock.json:/app/package-lock.json
+      - ./src/lib/plan-catalog.ts:/app/src/lib/plan-catalog.ts
+      - ./tsconfig.json:/app/tsconfig.json
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/lets_connect?schema=public
     depends_on:
