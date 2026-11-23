@@ -11,6 +11,26 @@ export type QueueNotificationInput = {
   metadata?: Prisma.InputJsonValue;
 };
 
+const DEFAULT_OTP_FROM = "Lets Connect <no-reply@tech-sphere1.xyz>";
+const DEFAULT_INFO_FROM = "Lets Connect <info@tech-sphere1.xyz>";
+
+/** OTP → no-reply; everything else (notifications / info) → info@ */
+function resolveEmailFrom(template: string) {
+  const isOtp = template === "auth.otp" || template.startsWith("auth.otp.");
+  if (isOtp) {
+    return (
+      process.env.EMAIL_FROM_OTP?.trim() ||
+      process.env.EMAIL_FROM_NOREPLY?.trim() ||
+      DEFAULT_OTP_FROM
+    );
+  }
+  return (
+    process.env.EMAIL_FROM_INFO?.trim() ||
+    process.env.EMAIL_FROM?.trim() ||
+    DEFAULT_INFO_FROM
+  );
+}
+
 /**
  * Queue an SMS / email / in-app notification.
  * Delivery is best-effort: DEMO/local logs; production uses RESEND_API_KEY / SMS_API_KEY.
@@ -66,7 +86,7 @@ async function deliverNotification(id: string) {
       });
       return;
     }
-    const from = process.env.EMAIL_FROM?.trim() || "Lets Connect <noreply@tech-spherewifi.xyz>";
+    const from = resolveEmailFrom(note.template);
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
