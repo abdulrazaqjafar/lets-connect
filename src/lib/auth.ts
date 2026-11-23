@@ -58,6 +58,18 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
+function cookieSecure() {
+  // Explicit override for HTTP IP / pre-TLS deploys
+  if (process.env.COOKIE_SECURE === "true") return true;
+  if (process.env.COOKIE_SECURE === "false") return false;
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_PORTAL_URL?.trim() ||
+    "";
+  // Only mark Secure when the public URL is HTTPS (browsers drop Secure cookies on http://)
+  return appUrl.startsWith("https://");
+}
+
 export async function createSession(userId: string) {
   const exp = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000;
   const token = encodeSession({ uid: userId, exp });
@@ -65,7 +77,7 @@ export async function createSession(userId: string) {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecure(),
     path: "/",
     expires: new Date(exp),
   });

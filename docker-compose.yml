@@ -53,6 +53,7 @@ services:
       NEXT_PUBLIC_APP_HOST: "tech-spherewifi.xyz"
       PORTAL_DOMAIN: "tech-spherewifi.xyz"
       NEXT_PUBLIC_PORTAL_URL: "http://18.199.177.29"
+      COOKIE_SECURE: "false"
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
 
