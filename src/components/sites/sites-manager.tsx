@@ -5,6 +5,7 @@ import { Copy, Eye, EyeOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { SiteBrandingDialog } from "@/components/sites/site-branding-dialog";
 import { SiteFormDialog } from "@/components/sites/site-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -26,6 +27,11 @@ export type SiteRow = {
   nasIdentifier: string;
   radiusSecret: string;
   status: string;
+  brandName?: string | null;
+  brandLogoUrl?: string | null;
+  brandPrimaryColor?: string | null;
+  paymentProvider?: string | null;
+  routerHost?: string | null;
   _count: { packages: number; vouchers: number };
 };
 
@@ -40,6 +46,7 @@ export function SitesManager() {
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [brandSite, setBrandSite] = useState<SiteRow | null>(null);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
 
@@ -140,12 +147,13 @@ export function SitesManager() {
                 <TableHead>NAS Identifier</TableHead>
                 <TableHead>Secret Key</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {!loading && sites.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground">
+                  <TableCell colSpan={7} className="text-muted-foreground">
                     No sites yet. Add your first hotspot location.
                   </TableCell>
                 </TableRow>
@@ -208,6 +216,15 @@ export function SitesManager() {
                       <TableCell>
                         <Badge variant="secondary">{site.status}</Badge>
                       </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setBrandSite(site)}
+                        >
+                          Brand / API
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })
@@ -220,6 +237,14 @@ export function SitesManager() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onCreated={() => void loadSites()}
+      />
+      <SiteBrandingDialog
+        open={Boolean(brandSite)}
+        onOpenChange={(open) => {
+          if (!open) setBrandSite(null);
+        }}
+        site={brandSite}
+        onSaved={() => void loadSites()}
       />
     </div>
   );

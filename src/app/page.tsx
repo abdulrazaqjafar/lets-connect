@@ -1,16 +1,57 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Headphones,
+  LayoutGrid,
+  Network,
+  Router,
+  Ticket,
+  Wallet,
+} from "lucide-react";
 import { BrandLogo } from "@/components/brand/logo";
 import { buttonVariants } from "@/components/ui/button";
 import { formatTzs } from "@/lib/money";
 import { PLATFORM_PLANS } from "@/lib/plan-catalog";
 import { cn } from "@/lib/utils";
 
+const CAPABILITIES = [
+  {
+    title: "MikroTik automation",
+    body: "One-command onboarding for RouterOS v7. WireGuard, API access and RADIUS configured automatically.",
+    icon: Router,
+  },
+  {
+    title: "Local payment gateways",
+    body: "Snippe, Selcom, ClickPesa, AzamPay and more — mobile money and card payments built in.",
+    icon: Wallet,
+  },
+  {
+    title: "Hotspot vouchers",
+    body: "Generate, sell and track prepaid Wi‑Fi vouchers with a branded, self-service captive portal.",
+    icon: Ticket,
+  },
+  {
+    title: "Multi-tenant by design",
+    body: "Run multiple ISP businesses from one LetsConnect installation with strict data isolation.",
+    icon: LayoutGrid,
+  },
+  {
+    title: "Live network visibility",
+    body: "Real-time sessions, bandwidth usage, router health and payment collections on one dashboard.",
+    icon: Network,
+  },
+  {
+    title: "Customer support built in",
+    body: "A ticketing system and SMS/email notifications so your customers always know what is happening.",
+    icon: Headphones,
+  },
+] as const;
+
 export default function Home() {
   return (
     <main className="min-h-dvh bg-[#071018] text-white">
-      {/* Hero only — shared background image */}
       <section className="relative isolate min-h-[78vh] overflow-hidden">
         <Image
           src="/images/landing-hero.jpg"
@@ -53,13 +94,14 @@ export default function Home() {
 
           <div className="flex flex-1 flex-col justify-center pb-16 pt-8">
             <p className="text-[11px] font-semibold tracking-[0.2em] text-teal-300 uppercase">
-              Tanzania
+              Tanzania hotspot OS
             </p>
             <h1 className="mt-3 font-heading text-4xl font-semibold tracking-[-0.04em] sm:text-5xl lg:text-6xl">
               Lets<span className="text-teal-300">Connect</span>
             </h1>
-            <p className="mt-4 max-w-md text-base text-slate-200 sm:text-lg">
-              Manage Wi‑Fi sites, vouchers, and MikroTik — after you sign in.
+            <p className="mt-4 max-w-lg text-base text-slate-200 sm:text-lg">
+              MikroTik automation, local mobile money, vouchers, live network ops,
+              and customer support — for ISP businesses that scale.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
@@ -75,7 +117,7 @@ export default function Home() {
                 <ArrowRight className="size-4" />
               </Link>
               <Link
-                href="#pricing"
+                href="#capabilities"
                 className={cn(
                   buttonVariants({
                     size: "lg",
@@ -85,14 +127,42 @@ export default function Home() {
                   }),
                 )}
               >
-                Pricing
+                See capabilities
               </Link>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="pricing" className="scroll-mt-8 bg-[#0b1520] px-5 py-14 sm:px-8">
+      <section
+        id="capabilities"
+        className="scroll-mt-8 border-t border-white/5 bg-[#0b1520] px-5 py-16 sm:px-8"
+      >
+        <div className="mx-auto max-w-6xl">
+          <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+            Everything you need to run Wi‑Fi
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            From one-command router setup to prepaid vouchers and live collections —
+            built for Tanzanian ISPs and venue operators.
+          </p>
+          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {CAPABILITIES.map((item) => (
+              <div key={item.title} className="space-y-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-teal-400/10 text-teal-300 ring-1 ring-teal-400/20">
+                  <item.icon className="size-4" />
+                </div>
+                <h3 className="font-heading text-lg font-semibold tracking-tight">
+                  {item.title}
+                </h3>
+                <p className="text-sm leading-relaxed text-slate-400">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="scroll-mt-8 bg-[#071018] px-5 py-14 sm:px-8">
         <div className="mx-auto max-w-6xl">
           <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             Subscriptions

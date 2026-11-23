@@ -21,6 +21,11 @@ export async function GET(_request: Request, context: RouteContext) {
         nasIdentifier: true,
         status: true,
         ownerId: true,
+        brandName: true,
+        brandLogoUrl: true,
+        brandPrimaryColor: true,
+        brandAccentColor: true,
+        paymentProvider: true,
       },
     });
 
@@ -51,6 +56,11 @@ export async function GET(_request: Request, context: RouteContext) {
         slug: site.slug,
         location: site.location,
         nasIdentifier: site.nasIdentifier,
+        brandName: site.brandName ?? site.name,
+        brandLogoUrl: site.brandLogoUrl,
+        brandPrimaryColor: site.brandPrimaryColor ?? "#0d9488",
+        brandAccentColor: site.brandAccentColor,
+        paymentProvider: site.paymentProvider,
       },
       packages,
     });

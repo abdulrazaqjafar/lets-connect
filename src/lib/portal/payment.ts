@@ -37,7 +37,7 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
 
   const site = await prisma.site.findFirst({
     where: { id: input.siteId, status: "ACTIVE" },
-    select: { id: true, ownerId: true, name: true },
+    select: { id: true, ownerId: true, name: true, paymentProvider: true },
   });
   if (!site) throw new PortalPaymentError("Site not available", 404);
 
@@ -55,36 +55,37 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
         ? PaymentProvider.AIRTEL_MONEY
         : PaymentProvider.MPESA;
 
-  const { paymentDemoMode, createSnippeMobilePayment, toSnippePhone } =
-    await import("@/lib/payments/snippe");
+  const { paymentDemoMode } = await import("@/lib/payments/snippe");
+  const { initiateSitePayment } = await import("@/lib/payments/registry");
   const demoMode = paymentDemoMode();
-  const provider = demoMode ? mnoProvider : PaymentProvider.SNIPPE;
-
   const externalId = createId("pay");
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-  let snippeRef: string | null = null;
+  let gatewayRef: string | null = null;
+  let provider: PaymentProvider = demoMode ? mnoProvider : site.paymentProvider;
+
   if (!demoMode) {
-    const phone255 = toSnippePhone(phone);
-    if (!phone255) {
-      throw new PortalPaymentError("Enter a valid Tanzania mobile number", 400);
-    }
-    const created = await createSnippeMobilePayment({
+    const created = await initiateSitePayment(site.paymentProvider, {
       amountTzs: pkg.priceAmount,
-      phone: phone255,
+      phone,
       firstName: "WiFi",
       lastName: "Guest",
-      email: `${phone255}@wifi.local`,
+      email: `${phone.replace(/\D/g, "")}@wifi.local`,
       metadata: {
         kind: "portal_voucher",
         externalId,
         siteId: site.id,
         packageId: pkg.id,
         mac: input.mac,
+        mno: mnoProvider,
       },
       idempotencyKey: externalId.slice(0, 30),
     });
-    snippeRef = created.reference;
+    gatewayRef = created.reference;
+    provider = created.provider;
+    if (created.status === "COMPLETED" && created.demo) {
+      // Demo gateway completes immediately — still create PENDING then confirm below
+    }
   }
 
   const result = await prisma.$transaction(async (tx) => {
@@ -103,7 +104,8 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
           phone,
           mac: input.mac,
           provider,
-          snippeRef,
+          gatewayRef,
+          mno: mnoProvider,
           userData: input.userData ?? null,
         } satisfies Prisma.InputJsonValue,
       },
@@ -138,7 +140,7 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
     paymentId: result.transaction.id,
     sessionId: result.session.id,
     externalId,
-    providerRef: snippeRef ?? `DEMO-${externalId}`,
+    providerRef: gatewayRef ?? `DEMO-${externalId}`,
     provider,
     amount: pkg.priceAmount,
     currency: pkg.priceCurrency,
@@ -147,7 +149,7 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
     demoMode,
     message: demoMode
       ? "Demo mode: payment will confirm shortly"
-      : "Check your phone for the mobile money prompt (M-Pesa / Airtel / Mixx / Halotel)",
+      : "Check your phone for the mobile money prompt (Snippe / Selcom / ClickPesa / AzamPay)",
   };
 }
 
@@ -200,6 +202,15 @@ function mapProvider(
   }
   if (provider === "SNIPPE" || provider === PaymentProvider.SNIPPE) {
     return PaymentProvider.SNIPPE;
+  }
+  if (provider === "SELCOM" || provider === PaymentProvider.SELCOM) {
+    return PaymentProvider.SELCOM;
+  }
+  if (provider === "CLICKPESA" || provider === PaymentProvider.CLICKPESA) {
+    return PaymentProvider.CLICKPESA;
+  }
+  if (provider === "AZAMPAY" || provider === PaymentProvider.AZAMPAY) {
+    return PaymentProvider.AZAMPAY;
   }
   return undefined;
 }
@@ -358,6 +369,25 @@ export async function confirmPortalPayment(input: ConfirmPortalPaymentInput) {
     );
   } catch (error) {
     console.error("[radius] failed to activate portal voucher", error);
+  }
+
+  try {
+    const siteRow = await prisma.site.findUnique({
+      where: { id: transaction.siteId },
+      select: { name: true, ownerId: true },
+    });
+    if (siteRow) {
+      const { notifyPaymentSuccess } = await import("@/lib/notifications");
+      await notifyPaymentSuccess({
+        ownerId: siteRow.ownerId,
+        phone: session.phone,
+        amount: confirmed.updatedTx.amount,
+        currency: confirmed.updatedTx.currency,
+        siteName: siteRow.name,
+      });
+    }
+  } catch (error) {
+    console.error("[notify] payment success failed", error);
   }
 
   const loginUsername = confirmed.updatedSession.loginUsername!;

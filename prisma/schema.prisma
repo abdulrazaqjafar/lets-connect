@@ -44,11 +44,41 @@ enum PaymentProvider {
   TIGO_PESA
   AIRTEL_MONEY
   SNIPPE
+  SELCOM
+  CLICKPESA
+  AZAMPAY
   STRIPE
   PAYSTACK
   FLUTTERWAVE
   MANUAL
   OTHER
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
 }
 
 enum PortalSessionStatus {
@@ -93,6 +123,9 @@ model User {
   subscriptions      Subscription[]
   subscriptionPays   SubscriptionPayment[]
   cashierSites       CashierSite[]
+  supportTickets     SupportTicket[]       @relation("TicketOwner")
+  ticketMessages     TicketMessage[]
+  notifications      Notification[]
 
   @@index([role])
   @@index([ownerId])
@@ -221,6 +254,20 @@ model Site {
   /// Extra vendor-specific router options (JSON)
   routerConfig   Json?
 
+  /// Captive portal white-label (branded self-service)
+  brandName         String?
+  brandLogoUrl      String?
+  brandPrimaryColor String?  @default("#0d9488")
+  brandAccentColor  String?
+  /// Preferred local payment gateway for this site's portal
+  paymentProvider   PaymentProvider @default(SNIPPE)
+
+  /// WireGuard peer public key provisioned for this router (optional)
+  wireguardPublicKey String?
+  /// Last successful RouterOS API health check
+  routerLastSeenAt   DateTime?
+  routerHealthJson   Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -230,6 +277,7 @@ model Site {
   transactions   Transaction[]
   portalSessions PortalSession[]
   cashierSites   CashierSite[]
+  supportTickets SupportTicket[]
 
   @@unique([ownerId, slug])
   @@index([ownerId])
@@ -487,4 +535,69 @@ model Nas {
 
   @@index([nasname], map: "nas_nasname")
   @@map("nas")
+}
+
+/// End-customer / operator support ticket (multi-tenant by owner)
+model SupportTicket {
+  id          String                @id @default(cuid())
+  ownerId     String
+  siteId      String?
+  subject     String
+  status      SupportTicketStatus   @default(OPEN)
+  priority    SupportTicketPriority @default(NORMAL)
+  /// End-user contact (WiFi customer) when ticket originates from portal
+  customerName  String?
+  customerPhone String?
+  customerEmail String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  resolvedAt  DateTime?
+
+  owner    User            @relation("TicketOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  site     Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  messages TicketMessage[]
+
+  @@index([ownerId, status])
+  @@index([siteId])
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  /// Staff / owner author; null = customer / system
+  authorId  String?
+  body      String
+  isInternal Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_messages")
+}
+
+/// Outbound SMS / email / in-app notifications (payment, voucher, ticket updates)
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String?
+  channel   NotificationChannel
+  status    NotificationStatus  @default(PENDING)
+  /// Template key e.g. payment.success, voucher.expiring, ticket.reply
+  template  String
+  recipient String
+  subject   String?
+  body      String
+  metadata  Json?
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([template])
+  @@map("notifications")
 }

@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CreditCard,
+  Headphones,
   LayoutDashboard,
   LogOut,
   MapPinned,
+  Network,
   Package,
   Router,
   Ticket,
@@ -28,11 +30,13 @@ type NavLink = {
 
 const links: NavLink[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true, ownerOnly: true },
+  { href: "/dashboard/network", label: "Live network", icon: Network, ownerOnly: true },
   { href: "/dashboard/sites", label: "Sites", icon: MapPinned, ownerOnly: true },
   { href: "/dashboard/packages", label: "Packages", icon: Package, ownerOnly: true },
   { href: "/dashboard/vouchers", label: "Vouchers", icon: Ticket, cashierOk: true },
   { href: "/dashboard/staff", label: "Staff", icon: Users, ownerOnly: true },
   { href: "/dashboard/router-setup", label: "Router setup", icon: Router, ownerOnly: true },
+  { href: "/dashboard/support", label: "Support", icon: Headphones, ownerOnly: true },
   { href: "/dashboard/billing", label: "Subscriptions", icon: CreditCard, ownerOnly: true },
 ];
 

@@ -27,6 +27,9 @@ type PortalSite = {
   id: string;
   name: string;
   location?: string | null;
+  brandName?: string | null;
+  brandLogoUrl?: string | null;
+  brandPrimaryColor?: string | null;
 };
 
 type TabId = "lipa" | "voucher";
@@ -221,22 +224,36 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
     }
   }
 
+  const brandColor = site?.brandPrimaryColor || "#0d9488";
+  const displayName = site?.brandName || site?.name || "Wi‑Fi Portal";
+
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[#071018] px-4 py-6">
+    <div
+      className="relative min-h-dvh overflow-hidden bg-[#071018] px-4 py-6"
+      style={{ ["--portal-brand" as string]: brandColor }}
+    >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
-          background:
-            "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(45,212,191,0.25), transparent 55%), radial-gradient(ellipse 60% 40% at 100% 100%, rgba(14,116,144,0.2), transparent 50%), #071018",
+          background: `radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, ${brandColor} 40%, transparent), transparent 55%), radial-gradient(ellipse 60% 40% at 100% 100%, rgba(14,116,144,0.2), transparent 50%), #071018`,
         }}
       />
       <div className="relative mx-auto flex w-full max-w-md flex-col gap-5">
         <header className="space-y-4 rounded-3xl border border-white/10 bg-white/95 p-5 shadow-[0_30px_60px_-35px_rgba(0,0,0,0.7)] backdrop-blur">
-          <BrandLogo />
+          {site?.brandLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={site.brandLogoUrl}
+              alt={displayName}
+              className="h-10 w-auto max-w-[180px] object-contain"
+            />
+          ) : (
+            <BrandLogo />
+          )}
           <div>
             <h1 className="font-heading text-2xl font-semibold tracking-tight text-slate-900">
-              {site?.name ?? "Wi‑Fi Portal"}
+              {displayName}
             </h1>
             {site?.location ? (
               <p className="mt-0.5 text-sm text-slate-600">{site.location}</p>
@@ -281,10 +298,9 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
                 type="button"
                 onClick={() => setTab("lipa")}
                 className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  tab === "lipa"
-                    ? "bg-teal-700 text-white shadow-sm"
-                    : "text-slate-600"
+                  tab === "lipa" ? "text-white shadow-sm" : "text-slate-600"
                 }`}
+                style={tab === "lipa" ? { backgroundColor: brandColor } : undefined}
               >
                 <Smartphone className="size-4" />
                 Mobile money
@@ -293,10 +309,11 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
                 type="button"
                 onClick={() => setTab("voucher")}
                 className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  tab === "voucher"
-                    ? "bg-teal-700 text-white shadow-sm"
-                    : "text-slate-600"
+                  tab === "voucher" ? "text-white shadow-sm" : "text-slate-600"
                 }`}
+                style={
+                  tab === "voucher" ? { backgroundColor: brandColor } : undefined
+                }
               >
                 <Ticket className="size-4" />
                 Cash voucher

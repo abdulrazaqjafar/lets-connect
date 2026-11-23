@@ -27,6 +27,20 @@ export type MikrotikScriptOptions = {
   radiusAcctPort?: number;
   /** RADIUS incoming / PoD port (MikroTik default 3799) */
   radiusPodPort?: number;
+  /** Enable WireGuard tunnel to cloud (RouterOS v7) */
+  enableWireguard?: boolean;
+  /** Cloud WireGuard public key (peer) */
+  wireguardPeerPublicKey?: string;
+  /** Cloud WireGuard endpoint host:port */
+  wireguardEndpoint?: string;
+  /** Local WireGuard address e.g. 10.66.0.2/32 */
+  wireguardAddress?: string;
+  /** Create dedicated RouterOS API user for Lets Connect */
+  enableApiUser?: boolean;
+  /** API username (default letsconnect) */
+  apiUsername?: string;
+  /** API password (defaults to RADIUS secret) */
+  apiPassword?: string;
 };
 
 const DEFAULT_WALLED_GARDEN_HOSTS = [
@@ -34,6 +48,15 @@ const DEFAULT_WALLED_GARDEN_HOSTS = [
   "www.tech-spherewifi.xyz",
   "azampay.co.tz",
   "www.azampay.co.tz",
+  "checkout.azampay.co.tz",
+  "selcom.net",
+  "www.selcom.net",
+  "api.selcom.net",
+  "clickpesa.com",
+  "www.clickpesa.com",
+  "api.clickpesa.com",
+  "snippe.sh",
+  "api.snippe.sh",
   "vodacom.co.tz",
   "www.vodacom.co.tz",
   "mpesa.vodacom.co.tz",
@@ -99,6 +122,23 @@ export function generateMikrotikScript(
   const authPort = options.radiusAuthPort ?? 1812;
   const acctPort = options.radiusAcctPort ?? 1813;
   const podPort = options.radiusPodPort ?? Number(process.env.RADIUS_POD_PORT ?? 3799);
+  const enableWg =
+    options.enableWireguard ??
+    process.env.MIKROTIK_WIREGUARD_ENABLED === "true";
+  const wgPeerKey = (
+    options.wireguardPeerPublicKey ??
+    process.env.WIREGUARD_CLOUD_PUBLIC_KEY ??
+    ""
+  ).trim();
+  const wgEndpoint = (
+    options.wireguardEndpoint ??
+    process.env.WIREGUARD_CLOUD_ENDPOINT ??
+    `${cloudIp}:51820`
+  ).trim();
+  const wgAddress = options.wireguardAddress ?? "10.66.0.2/32";
+  const enableApi = options.enableApiUser !== false;
+  const apiUser = options.apiUsername ?? "letsconnect";
+  const apiPass = options.apiPassword ?? site.secretKey;
 
   const profileName = "hsprof-letsconnect";
   const serverName = "hotspot-letsconnect";
@@ -116,7 +156,8 @@ export function generateMikrotikScript(
   const cmd = (line: string) => lines.push(line);
 
   push("# ============================================================");
-  push("# Lets Connect — MikroTik Hotspot + RADIUS");
+  push("# Lets Connect — One-command RouterOS v7 onboarding");
+  push("# Hotspot + RADIUS + API user + optional WireGuard");
   push(`# Site: ${site.name}`);
   push(`# NAS-Identifier: ${site.nasIdentifier}`);
   push(`# Generated: ${new Date().toISOString()}`);
@@ -292,6 +333,59 @@ export function generateMikrotikScript(
   push(`# Portal URL: ${portalBase}/portal/${site.id}`);
   push();
 
+  push("# --- 12) RouterOS API access (Lets Connect cloud) ---");
+  if (enableApi) {
+    cmd(`:do { /user group remove [find where name="letsconnect-api"] } on-error={}`);
+    cmd(
+      `/user group add name="letsconnect-api" policy=local,telnet,ssh,ftp,reboot,read,write,policy,test,api,!winbox,!web,!password,!sensitive,!sniff,!dude,!tikapp comment="${escapeRos(comment)}"`,
+    );
+    cmd(`:do { /user remove [find where name="${escapeRos(apiUser)}"] } on-error={}`);
+    cmd(
+      `/user add name="${escapeRos(apiUser)}" group=letsconnect-api password="${escapeRos(apiPass)}" comment="${escapeRos(comment)}"`,
+    );
+    cmd(`/ip service set api disabled=no`);
+    cmd(
+      `:do { /ip firewall filter remove [find where comment~"${escapeRos(`${comment} api`)}"] } on-error={}`,
+    );
+    cmd(
+      `/ip firewall filter add chain=input action=accept protocol=tcp dst-port=8728 comment="${escapeRos(`${comment} api`)}" place-before=0`,
+    );
+    push(`# API user: ${apiUser}  (store password securely in Lets Connect site settings)`);
+  } else {
+    push("# API user skipped (enableApiUser=false)");
+  }
+  push();
+
+  push("# --- 13) WireGuard tunnel to cloud (RouterOS v7) ---");
+  if (enableWg && wgPeerKey) {
+    cmd(`:do { /interface wireguard peers remove [find where interface="wg-letsconnect"] } on-error={}`);
+    cmd(`:do { /interface wireguard remove [find where name="wg-letsconnect"] } on-error={}`);
+    cmd(
+      `/interface wireguard add name="wg-letsconnect" listen-port=13231 mtu=1420 comment="${escapeRos(comment)}"`,
+    );
+    cmd(
+      `/ip address add address=${escapeRos(wgAddress)} interface=wg-letsconnect comment="${escapeRos(comment)}"`,
+    );
+    cmd(
+      [
+        "/interface wireguard peers add",
+        'interface=wg-letsconnect',
+        `public-key="${escapeRos(wgPeerKey)}"`,
+        `endpoint-address=${escapeRos(wgEndpoint.split(":")[0] ?? cloudIp)}`,
+        `endpoint-port=${escapeRos(wgEndpoint.split(":")[1] ?? "51820")}`,
+        "allowed-address=10.66.0.0/24",
+        "persistent-keepalive=25s",
+        `comment="${escapeRos(comment)}"`,
+      ].join(" "),
+    );
+    cmd(`:put ("WireGuard local public key: " . [/interface wireguard get wg-letsconnect public-key])`);
+    push("# Paste the printed public key into Lets Connect site → WireGuard peer.");
+  } else {
+    push("# WireGuard skipped — set WIREGUARD_CLOUD_PUBLIC_KEY + MIKROTIK_WIREGUARD_ENABLED=true");
+    push("# Or pass enableWireguard + wireguardPeerPublicKey when generating the script.");
+  }
+  push();
+
   push("# --- Done ---");
   cmd(
     `:put "Lets Connect ready. NAS=${escapeRos(site.nasIdentifier)} RADIUS=${escapeRos(cloudIp)}"`,
@@ -300,7 +394,7 @@ export function generateMikrotikScript(
     `:put "Voucher portal: ${escapeRos(portalBase)}/portal/${escapeRos(site.id)}"`,
   );
   cmd(
-    `:put "Connect a phone to SSID LetsConnect — browser should open the portal."`,
+    `:put "API user ready for cloud control. Connect a phone to SSID LetsConnect."`,
   );
   push();
 
