@@ -14,14 +14,18 @@ export async function GET(request: Request) {
       );
     }
 
-    const site = await resolvePortalSite(ctx);
-    if (!site) {
+    const resolved = await resolvePortalSite(ctx);
+    if (!resolved) {
       return jsonError(
         "Hotspot site not found. Ensure nas= matches the router identity / NAS-Identifier.",
         404,
       );
     }
+    if (!resolved.available) {
+      return jsonError(resolved.reason, 403);
+    }
 
+    const site = resolved.site;
     const packages = await listPortalPackages(site.id);
 
     return jsonOk({

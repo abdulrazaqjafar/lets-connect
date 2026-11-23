@@ -18,7 +18,8 @@
     "stack:up": "docker compose up -d --build",
     "radius:worker": "tsx scripts/radius-session-worker.ts",
     "radius:supervisor": "tsx scripts/radius-supervisor-once.ts",
-    "cron:expire-vouchers": "tsx scripts/radius-supervisor-once.ts"
+    "cron:expire-vouchers": "tsx scripts/radius-supervisor-once.ts",
+    "cron:expire-subscriptions": "tsx scripts/expire-subscriptions.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -27,6 +28,7 @@
     "@base-ui/react": "^1.9.0",
     "@hookform/resolvers": "^7.0.8",
     "@prisma/client": "^6.19.3",
+    "@snippe/sdk": "^1.1.0",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

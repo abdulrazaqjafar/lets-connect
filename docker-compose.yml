@@ -54,6 +54,9 @@ services:
       PORTAL_DOMAIN: "tech-spherewifi.xyz"
       NEXT_PUBLIC_PORTAL_URL: "http://18.199.177.29"
       COOKIE_SECURE: "false"
+      PAYMENT_DEMO_MODE: "true"
+      SNIPPE_API_KEY: "${SNIPPE_API_KEY:-}"
+      SNIPPE_WEBHOOK_SECRET: "${SNIPPE_WEBHOOK_SECRET:-}"
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
 

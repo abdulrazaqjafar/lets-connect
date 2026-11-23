@@ -30,7 +30,11 @@ export default function LoginPage() {
       return;
     }
     toast.success("Welcome back");
-    router.push("/dashboard");
+    router.push(
+      typeof payload.redirectTo === "string"
+        ? payload.redirectTo
+        : "/dashboard",
+    );
     router.refresh();
   }
 

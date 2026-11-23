@@ -40,7 +40,37 @@ export async function ensureSubscriptionPlans() {
 
 const ACTIVE_STATUSES = ["TRIALING", "ACTIVE"] as const;
 
+/**
+ * Mark expired TRIALING/ACTIVE rows as EXPIRED and suspend the owner's sites.
+ */
+export async function expireStaleSubscriptionsForUser(userId: string) {
+  const now = new Date();
+  const stale = await prisma.subscription.findMany({
+    where: {
+      userId,
+      status: { in: [...ACTIVE_STATUSES] },
+      endsAt: { lte: now },
+    },
+    select: { id: true },
+  });
+  if (stale.length === 0) return { expired: 0 };
+
+  await prisma.subscription.updateMany({
+    where: { id: { in: stale.map((s) => s.id) } },
+    data: { status: "EXPIRED" },
+  });
+
+  await prisma.site.updateMany({
+    where: { ownerId: userId, status: "ACTIVE" },
+    data: { status: "SUSPENDED" },
+  });
+
+  return { expired: stale.length };
+}
+
 export async function getActiveSubscription(userId: string) {
+  await expireStaleSubscriptionsForUser(userId);
+
   return prisma.subscription.findFirst({
     where: {
       userId,
@@ -49,6 +79,45 @@ export async function getActiveSubscription(userId: string) {
     },
     include: { plan: true },
     orderBy: { createdAt: "desc" },
+  });
+}
+
+export type SubscriptionAccess =
+  | {
+      ok: true;
+      subscription: NonNullable<Awaited<ReturnType<typeof getActiveSubscription>>>;
+      locked: false;
+    }
+  | {
+      ok: false;
+      subscription: null;
+      locked: true;
+      reason: string;
+      status: 402;
+    };
+
+/** Site ops + portal require an unexpired TRIALING/ACTIVE plan. */
+export async function requireActiveSubscription(
+  userId: string,
+): Promise<SubscriptionAccess> {
+  const subscription = await getActiveSubscription(userId);
+  if (!subscription) {
+    return {
+      ok: false,
+      subscription: null,
+      locked: true,
+      reason:
+        "Your trial or subscription has ended. Renew on Billing to restore sites and Wi‑Fi portal.",
+      status: 402,
+    };
+  }
+  return { ok: true, subscription, locked: false };
+}
+
+export async function unsuspendOwnerSites(userId: string) {
+  await prisma.site.updateMany({
+    where: { ownerId: userId, status: "SUSPENDED" },
+    data: { status: "ACTIVE" },
   });
 }
 
@@ -64,7 +133,8 @@ export async function getSiteQuota(userId: string) {
       remaining: 0,
       plan: null,
       subscription: null,
-      reason: "No active subscription. Choose a plan on the Pricing page.",
+      locked: true as const,
+      reason: "No active subscription. Renew on the Billing page.",
     };
   }
 
@@ -78,6 +148,7 @@ export async function getSiteQuota(userId: string) {
     remaining,
     plan: subscription.plan,
     subscription,
+    locked: false as const,
     reason:
       remaining > 0
         ? null
@@ -111,7 +182,7 @@ export async function startSubscription(
     },
   });
 
-  return prisma.subscription.create({
+  const subscription = await prisma.subscription.create({
     data: {
       userId,
       planId: plan.id,
@@ -121,4 +192,67 @@ export async function startSubscription(
     },
     include: { plan: true },
   });
+
+  if (subscription.status === "ACTIVE" || subscription.status === "TRIALING") {
+    await unsuspendOwnerSites(userId);
+  }
+
+  return subscription;
+}
+
+/** Activate or extend plan after Snippe subscription payment. */
+export async function activatePaidSubscription(
+  userId: string,
+  planId: string,
+  days = 30,
+) {
+  const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+  if (!plan) throw new Error("Plan not found");
+
+  await prisma.subscription.updateMany({
+    where: { userId, status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] } },
+    data: { status: "CANCELED", canceledAt: new Date() },
+  });
+
+  const startsAt = new Date();
+  const endsAt = new Date(startsAt.getTime() + days * 24 * 60 * 60 * 1000);
+
+  const subscription = await prisma.subscription.create({
+    data: {
+      userId,
+      planId: plan.id,
+      status: "ACTIVE",
+      startsAt,
+      endsAt,
+    },
+    include: { plan: true },
+  });
+
+  await unsuspendOwnerSites(userId);
+  return subscription;
+}
+
+/** Cron: expire all stale subscriptions platform-wide. */
+export async function expireAllStaleSubscriptions() {
+  const now = new Date();
+  const stale = await prisma.subscription.findMany({
+    where: {
+      status: { in: [...ACTIVE_STATUSES] },
+      endsAt: { lte: now },
+    },
+    select: { id: true, userId: true },
+  });
+  if (stale.length === 0) return { expired: 0, users: 0 };
+
+  const userIds = [...new Set(stale.map((s) => s.userId))];
+  await prisma.subscription.updateMany({
+    where: { id: { in: stale.map((s) => s.id) } },
+    data: { status: "EXPIRED" },
+  });
+  await prisma.site.updateMany({
+    where: { ownerId: { in: userIds }, status: "ACTIVE" },
+    data: { status: "SUSPENDED" },
+  });
+
+  return { expired: stale.length, users: userIds.length };
 }

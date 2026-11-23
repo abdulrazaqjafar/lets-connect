@@ -10,23 +10,59 @@ import {
   Package,
   Router,
   Ticket,
+  Users,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
-const links = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/dashboard/sites", label: "Sites", icon: MapPinned },
-  { href: "/dashboard/packages", label: "Packages", icon: Package },
-  { href: "/dashboard/vouchers", label: "Vouchers", icon: Ticket },
-  { href: "/dashboard/router-setup", label: "Router setup", icon: Router },
-  { href: "/dashboard/billing", label: "Subscriptions", icon: CreditCard },
+type NavLink = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  exact?: boolean;
+  ownerOnly?: boolean;
+  cashierOk?: boolean;
+};
+
+const links: NavLink[] = [
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true, ownerOnly: true },
+  { href: "/dashboard/sites", label: "Sites", icon: MapPinned, ownerOnly: true },
+  { href: "/dashboard/packages", label: "Packages", icon: Package, ownerOnly: true },
+  { href: "/dashboard/vouchers", label: "Vouchers", icon: Ticket, cashierOk: true },
+  { href: "/dashboard/staff", label: "Staff", icon: Users, ownerOnly: true },
+  { href: "/dashboard/router-setup", label: "Router setup", icon: Router, ownerOnly: true },
+  { href: "/dashboard/billing", label: "Subscriptions", icon: CreditCard, ownerOnly: true },
 ];
 
 export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [role, setRole] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch("/api/auth/me");
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        router.replace("/login");
+        return;
+      }
+      setRole(payload.user?.role ?? "SITE_OWNER");
+      setLocked(Boolean(payload.locked));
+      if (payload.user?.role === "CASHIER" && !pathname.startsWith("/dashboard/vouchers")) {
+        router.replace("/dashboard/vouchers");
+      } else if (
+        payload.locked &&
+        payload.user?.role !== "CASHIER" &&
+        !pathname.startsWith("/dashboard/billing")
+      ) {
+        router.replace("/dashboard/billing");
+      }
+    })();
+  }, [pathname, router]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -34,6 +70,13 @@ export function DashboardSidebar() {
     router.push("/login");
     router.refresh();
   }
+
+  const isCashier = role === "CASHIER";
+  const visible = links.filter((link) => {
+    if (isCashier) return link.cashierOk;
+    if (locked) return link.href === "/dashboard/billing";
+    return true;
+  });
 
   return (
     <aside className="print:hidden lc-sidebar flex w-full flex-col md:fixed md:inset-y-0 md:w-[17.5rem]">
@@ -43,10 +86,10 @@ export function DashboardSidebar() {
 
       <div className="px-3 pt-4 md:flex-1">
         <p className="mb-2 px-3 text-[10px] font-semibold tracking-[0.18em] text-slate-500 uppercase">
-          Workspace
+          {isCashier ? "Cash desk" : locked ? "Billing only" : "Workspace"}
         </p>
         <nav className="flex gap-1 overflow-x-auto pb-3 md:flex-col md:overflow-visible md:pb-0">
-          {links.map((link) => {
+          {visible.map((link) => {
             const Icon = link.icon;
             const active = link.exact
               ? pathname === link.href
@@ -85,9 +128,15 @@ export function DashboardSidebar() {
 
       <div className="mt-auto hidden space-y-3 border-t border-white/8 p-4 md:block">
         <div className="rounded-2xl bg-gradient-to-br from-teal-500/15 via-transparent to-transparent p-3 ring-1 ring-teal-400/20">
-          <p className="text-xs font-semibold text-teal-200">Account protected</p>
+          <p className="text-xs font-semibold text-teal-200">
+            {isCashier ? "Cashier access" : locked ? "Renew to unlock" : "Account protected"}
+          </p>
           <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-            Sign-in required. Site limits follow your subscription plan.
+            {isCashier
+              ? "Create and print cash vouchers for your assigned sites."
+              : locked
+                ? "Sites and Wi‑Fi portal are paused until you pay."
+                : "Sign-in required. Site limits follow your subscription plan."}
           </p>
         </div>
         <button

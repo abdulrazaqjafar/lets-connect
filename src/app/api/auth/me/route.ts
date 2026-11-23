@@ -1,16 +1,35 @@
 import { jsonError, jsonOk, handleRouteError } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
-import { getSiteQuota } from "@/lib/subscriptions";
+import { getSiteQuota, requireActiveSubscription } from "@/lib/subscriptions";
 
 export async function GET() {
   try {
     const user = await getCurrentUser();
     if (!user) return jsonError("Not authenticated", 401);
 
-    const quota = await getSiteQuota(user.id);
+    const billingOwnerId =
+      user.role === "CASHIER"
+        ? (
+            await (
+              await import("@/lib/prisma")
+            ).prisma.user.findFirst({
+              where: { id: user.id },
+              select: { ownerId: true },
+            })
+          )?.ownerId
+        : user.id;
+
+    if (!billingOwnerId) {
+      return jsonError("Cashier is not linked to an owner account", 403);
+    }
+
+    const quota = await getSiteQuota(billingOwnerId);
+    const access = await requireActiveSubscription(billingOwnerId);
 
     return jsonOk({
       user,
+      locked: access.locked === true,
+      lockReason: access.ok ? null : access.reason,
       subscription: quota.plan
         ? {
             status: quota.subscription?.status,
@@ -28,6 +47,7 @@ export async function GET() {
         usedSites: quota.usedSites,
         maxSites: quota.maxSites,
         remaining: quota.remaining,
+        locked: quota.locked === true,
       },
     });
   } catch (error) {

@@ -13,6 +13,7 @@ datasource db {
 enum UserRole {
   SAAS_ADMIN
   SITE_OWNER
+  CASHIER
 }
 
 enum SiteStatus {
@@ -42,6 +43,7 @@ enum PaymentProvider {
   MPESA
   TIGO_PESA
   AIRTEL_MONEY
+  SNIPPE
   STRIPE
   PAYSTACK
   FLUTTERWAVE
@@ -70,7 +72,7 @@ enum SubscriptionStatus {
   EXPIRED
 }
 
-/// SaaS platform admin or WiFi site owner (tenant root)
+/// SaaS platform admin, WiFi site owner, or cashier under an owner
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -79,14 +81,21 @@ model User {
   role         UserRole @default(SITE_OWNER)
   phone        String?
   isActive     Boolean  @default(true)
+  /// Parent site owner when role = CASHIER
+  ownerId      String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sites         Site[]
-  transactions  Transaction[]
-  subscriptions Subscription[]
+  owner              User?                 @relation("OwnerCashiers", fields: [ownerId], references: [id], onDelete: Cascade)
+  cashiers           User[]                @relation("OwnerCashiers")
+  sites              Site[]
+  transactions       Transaction[]
+  subscriptions      Subscription[]
+  subscriptionPays   SubscriptionPayment[]
+  cashierSites       CashierSite[]
 
   @@index([role])
+  @@index([ownerId])
   @@map("users")
 }
 
@@ -109,6 +118,7 @@ model SubscriptionPlan {
   updatedAt       DateTime @updatedAt
 
   subscriptions Subscription[]
+  payments      SubscriptionPayment[]
 
   @@index([isActive, sortOrder])
   @@map("subscription_plans")
@@ -129,12 +139,56 @@ model Subscription {
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
-  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     SubscriptionPlan       @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payments SubscriptionPayment[]
 
   @@index([userId, status])
   @@index([planId])
   @@map("subscriptions")
+}
+
+/// SaaS plan renewal / upgrade paid via Snippe (not site voucher sales)
+model SubscriptionPayment {
+  id             String            @id @default(cuid())
+  userId         String
+  planId         String
+  subscriptionId String?
+  amount         Int
+  currency       String            @default("TZS")
+  phone          String?
+  provider       PaymentProvider   @default(SNIPPE)
+  /// Snippe payment reference / idempotency key
+  externalId     String            @unique
+  snippeRef      String?
+  status         TransactionStatus @default(PENDING)
+  webhookPayload Json?
+  paidAt         DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("subscription_payments")
+}
+
+/// Cashier ↔ site assignment (cash voucher desk)
+model CashierSite {
+  id        String   @id @default(cuid())
+  cashierId String
+  siteId    String
+  createdAt DateTime @default(now())
+
+  cashier User @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+  site    Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([cashierId, siteId])
+  @@index([siteId])
+  @@map("cashier_sites")
 }
 
 /// WiFi location / hotspot — primary tenant resource with NAS + router config
@@ -175,6 +229,7 @@ model Site {
   vouchers       Voucher[]
   transactions   Transaction[]
   portalSessions PortalSession[]
+  cashierSites   CashierSite[]
 
   @@unique([ownerId, slug])
   @@index([ownerId])

@@ -21,6 +21,8 @@ export async function POST(request: Request) {
         id: true,
         email: true,
         name: true,
+        role: true,
+        ownerId: true,
         passwordHash: true,
         isActive: true,
       },
@@ -36,10 +38,29 @@ export async function POST(request: Request) {
     }
 
     await createSession(user.id);
-    const subscription = await getActiveSubscription(user.id);
+
+    const billingOwnerId =
+      user.role === "CASHIER" ? user.ownerId : user.id;
+    const subscription = billingOwnerId
+      ? await getActiveSubscription(billingOwnerId)
+      : null;
+
+    const redirectTo =
+      user.role === "CASHIER"
+        ? "/dashboard/vouchers"
+        : subscription
+          ? "/dashboard"
+          : "/dashboard/billing";
 
     return jsonOk({
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+      redirectTo,
+      locked: !subscription && user.role !== "CASHIER",
       subscription: subscription
         ? {
             status: subscription.status,

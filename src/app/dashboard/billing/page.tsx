@@ -1,15 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Crown } from "lucide-react";
+import { Check, Crown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatTzs } from "@/lib/money";
 import { PLATFORM_PLANS } from "@/lib/plan-catalog";
 import { cn } from "@/lib/utils";
 
 type MePayload = {
+  locked?: boolean;
+  lockReason?: string | null;
   subscription: {
     status?: string;
     endsAt?: string | null;
@@ -21,6 +25,8 @@ type MePayload = {
 export default function BillingPage() {
   const [me, setMe] = useState<MePayload | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [phone, setPhone] = useState("");
+  const [payingPlan, setPayingPlan] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/auth/me");
@@ -36,53 +42,113 @@ export default function BillingPage() {
     void load();
   }, [load]);
 
-  async function choosePlan(planCode: string) {
+  async function payPlan(planCode: string) {
+    if (!phone.trim()) {
+      toast.error("Enter the mobile money number that will pay");
+      return;
+    }
+    setPayingPlan(planCode);
     setBusy(planCode);
     try {
-      const response = await fetch("/api/billing/subscribe", {
+      const response = await fetch("/api/billing/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planCode }),
+        body: JSON.stringify({ planCode, phone: phone.trim() }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        toast.error(payload.error ?? "Could not change plan");
+        toast.error(payload.error ?? "Payment could not start");
         return;
       }
-      toast.success(`${payload.subscription.plan.name} plan activated`);
+      toast.success(payload.message ?? "Check your phone");
+      const paymentId = payload.paymentId as string;
+      // Poll until SUCCESS or timeout
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const st = await fetch(`/api/billing/payments/${paymentId}/status`);
+        const body = await st.json().catch(() => ({}));
+        if (body.status === "SUCCESS" || body.status === "COMPLETED") {
+          toast.success("Subscription activated");
+          void load();
+          return;
+        }
+        if (body.status === "FAILED") {
+          toast.error("Payment failed");
+          return;
+        }
+      }
+      toast.message("Still waiting for payment confirmation…");
       void load();
     } finally {
       setBusy(null);
+      setPayingPlan(null);
     }
   }
 
   const currentCode = me?.subscription?.plan.code;
+  const endsAt = me?.subscription?.endsAt
+    ? new Date(me.subscription.endsAt)
+    : null;
+  const daysLeft =
+    endsAt && endsAt > new Date()
+      ? Math.ceil((endsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+      : 0;
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Billing"
         title="Subscriptions"
-        description="Site capacity follows your plan. Upgrade when you add more locations."
+        description="Pay with Tanzania mobile money (Snippe). After trial ends, sites and Wi‑Fi portal pause until you renew."
       />
 
-      {me ? (
-        <div className="lc-panel rounded-2xl p-4 text-sm text-slate-600">
-          Current plan:{" "}
-          <span className="font-semibold text-slate-900">
-            {me.subscription?.plan.name ?? "None"}
-          </span>
-          {" · "}
-          Sites {me.quota.usedSites}/{me.quota.maxSites}
-          {me.subscription?.endsAt
-            ? ` · ends ${new Date(me.subscription.endsAt).toLocaleDateString()}`
-            : null}
+      {me?.locked ? (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">Account locked</p>
+          <p className="mt-1">
+            {me.lockReason ??
+              "Renew a plan below to restore sites, vouchers, and the Wi‑Fi portal."}
+          </p>
         </div>
       ) : null}
 
+      {me ? (
+        <div className="lc-panel space-y-1 rounded-2xl p-4 text-sm text-slate-600">
+          <p>
+            Current plan:{" "}
+            <span className="font-semibold text-slate-900">
+              {me.subscription?.plan.name ?? "None"}
+            </span>
+            {me.subscription?.status ? ` (${me.subscription.status})` : null}
+          </p>
+          <p>
+            Sites {me.quota.usedSites}/{me.quota.maxSites}
+            {endsAt
+              ? ` · ${me.locked ? "ended" : "ends"} ${endsAt.toLocaleDateString()}${
+                  !me.locked && daysLeft > 0 ? ` (${daysLeft}d left)` : ""
+                }`
+              : null}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="lc-panel max-w-md space-y-2 rounded-2xl p-4">
+        <Label htmlFor="payPhone">Mobile money number (payer)</Label>
+        <Input
+          id="payPhone"
+          className="bg-white"
+          placeholder="07XXXXXXXX"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+        <p className="text-xs text-slate-500">
+          M-Pesa, Airtel Money, Mixx by Yas, or Halotel via Snippe.
+        </p>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {PLATFORM_PLANS.map((plan) => {
-          const active = currentCode === plan.code;
+          const active = currentCode === plan.code && !me?.locked;
           return (
             <div
               key={plan.code}
@@ -97,7 +163,9 @@ export default function BillingPage() {
                   Popular
                 </span>
               ) : null}
-              <p className="font-heading text-lg font-semibold text-slate-900">{plan.name}</p>
+              <p className="font-heading text-lg font-semibold text-slate-900">
+                {plan.name}
+              </p>
               <p className="mt-1 text-sm text-slate-500">{plan.description}</p>
               <p className="mt-4 font-heading text-3xl font-semibold tracking-tight text-slate-950">
                 {formatTzs(plan.priceAmount)}
@@ -115,20 +183,22 @@ export default function BillingPage() {
                 ))}
               </ul>
               <Button
-                className={cn(
-                  "mt-5 w-full",
-                  active
-                    ? "bg-slate-900 text-white hover:bg-slate-800"
-                    : "bg-teal-700 text-white hover:bg-teal-800",
-                )}
-                disabled={active || busy === plan.code}
-                onClick={() => void choosePlan(plan.code)}
+                className="mt-5 w-full bg-teal-700 text-white hover:bg-teal-800"
+                disabled={busy === plan.code}
+                onClick={() => void payPlan(plan.code)}
               >
-                {active
-                  ? "Current plan"
-                  : busy === plan.code
-                    ? "Activating…"
-                    : "Choose"}
+                {busy === plan.code ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Waiting…
+                  </>
+                ) : active ? (
+                  "Renew / extend"
+                ) : payingPlan === plan.code ? (
+                  "Paying…"
+                ) : (
+                  "Pay with mobile money"
+                )}
               </Button>
             </div>
           );

@@ -48,15 +48,44 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
 
   const chosen =
     input.provider ?? detectMobileMoneyProvider(phone) ?? "MPESA";
-  const provider =
+  const mnoProvider =
     chosen === "TIGO_PESA"
       ? PaymentProvider.TIGO_PESA
       : chosen === "AIRTEL_MONEY"
         ? PaymentProvider.AIRTEL_MONEY
         : PaymentProvider.MPESA;
 
+  const { paymentDemoMode, createSnippeMobilePayment, toSnippePhone } =
+    await import("@/lib/payments/snippe");
+  const demoMode = paymentDemoMode();
+  const provider = demoMode ? mnoProvider : PaymentProvider.SNIPPE;
+
   const externalId = createId("pay");
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+  let snippeRef: string | null = null;
+  if (!demoMode) {
+    const phone255 = toSnippePhone(phone);
+    if (!phone255) {
+      throw new PortalPaymentError("Enter a valid Tanzania mobile number", 400);
+    }
+    const created = await createSnippeMobilePayment({
+      amountTzs: pkg.priceAmount,
+      phone: phone255,
+      firstName: "WiFi",
+      lastName: "Guest",
+      email: `${phone255}@wifi.local`,
+      metadata: {
+        kind: "portal_voucher",
+        externalId,
+        siteId: site.id,
+        packageId: pkg.id,
+        mac: input.mac,
+      },
+      idempotencyKey: externalId.slice(0, 30),
+    });
+    snippeRef = created.reference;
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const transaction = await tx.transaction.create({
@@ -74,6 +103,7 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
           phone,
           mac: input.mac,
           provider,
+          snippeRef,
           userData: input.userData ?? null,
         } satisfies Prisma.InputJsonValue,
       },
@@ -100,24 +130,7 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
     return { transaction, session, package: pkg, site };
   });
 
-  // Stub provider STK push — replace with real Daraja / Tigo API later
-  const demoMode =
-    process.env.PAYMENT_DEMO_MODE === "true" ||
-    (process.env.PAYMENT_DEMO_MODE !== "false" &&
-      process.env.NODE_ENV !== "production");
-  const providerRef = await dispatchStkPush({
-    provider,
-    phone,
-    amount: pkg.priceAmount,
-    currency: pkg.priceCurrency,
-    externalId,
-    accountReference: site.name.slice(0, 12),
-    description: pkg.name,
-    demoMode,
-  });
-
   if (demoMode) {
-    // Auto-confirm shortly so local captive-portal testing works without a PSP
     scheduleDemoConfirmation(externalId, 2500);
   }
 
@@ -125,45 +138,17 @@ export async function initiatePortalPayment(input: InitiatePortalPaymentInput) {
     paymentId: result.transaction.id,
     sessionId: result.session.id,
     externalId,
-    providerRef,
+    providerRef: snippeRef ?? `DEMO-${externalId}`,
     provider,
     amount: pkg.priceAmount,
     currency: pkg.priceCurrency,
     phone,
     expiresAt: expiresAt.toISOString(),
     demoMode,
-    message:
-      provider === PaymentProvider.TIGO_PESA
-        ? "Check your phone for the Tigo Pesa prompt"
-        : provider === PaymentProvider.AIRTEL_MONEY
-          ? "Check your phone for the Airtel Money prompt"
-          : "Check your phone for the M-Pesa prompt",
+    message: demoMode
+      ? "Demo mode: payment will confirm shortly"
+      : "Check your phone for the mobile money prompt (M-Pesa / Airtel / Mixx / Halotel)",
   };
-}
-
-async function dispatchStkPush(args: {
-  provider: PaymentProvider;
-  phone: string;
-  amount: number;
-  currency: string;
-  externalId: string;
-  accountReference: string;
-  description: string;
-  demoMode: boolean;
-}) {
-  // Integration seam for Safaricom Daraja / Tigo Pesa APIs
-  if (args.demoMode) {
-    return `DEMO-${args.externalId}`;
-  }
-
-  console.info("[payment] STK push requested", {
-    provider: args.provider,
-    phone: args.phone,
-    amount: args.amount,
-    externalId: args.externalId,
-  });
-
-  return args.externalId;
 }
 
 const demoTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -201,13 +186,22 @@ export type ConfirmPortalPaymentInput = {
 };
 
 function mapProvider(
-  provider?: PaymentProvider | MobileMoneyProvider,
+  provider?: PaymentProvider | MobileMoneyProvider | string,
 ): PaymentProvider | undefined {
   if (!provider) return undefined;
-  if (provider === "TIGO_PESA") return PaymentProvider.TIGO_PESA;
-  if (provider === "AIRTEL_MONEY") return PaymentProvider.AIRTEL_MONEY;
-  if (provider === "MPESA") return PaymentProvider.MPESA;
-  return provider;
+  if (provider === "TIGO_PESA" || provider === PaymentProvider.TIGO_PESA) {
+    return PaymentProvider.TIGO_PESA;
+  }
+  if (provider === "AIRTEL_MONEY" || provider === PaymentProvider.AIRTEL_MONEY) {
+    return PaymentProvider.AIRTEL_MONEY;
+  }
+  if (provider === "MPESA" || provider === PaymentProvider.MPESA) {
+    return PaymentProvider.MPESA;
+  }
+  if (provider === "SNIPPE" || provider === PaymentProvider.SNIPPE) {
+    return PaymentProvider.SNIPPE;
+  }
+  return undefined;
 }
 
 function isPaidStatus(status: string): boolean {

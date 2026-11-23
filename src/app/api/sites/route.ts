@@ -1,5 +1,5 @@
 import { jsonCreated, jsonError, jsonOk, handleRouteError } from "@/lib/api";
-import { getOwnerId, requireOwner } from "@/lib/owner";
+import { getOwnerId, requireOwnerWithSubscription } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { syncSiteToNasTable } from "@/lib/radius/nas";
 import {
@@ -20,8 +20,23 @@ export async function GET() {
       );
     }
 
+    const { getCurrentUser } = await import("@/lib/auth");
+    const sessionUser = await getCurrentUser();
+
+    let where: { ownerId: string; id?: { in: string[] } } = { ownerId };
+    if (sessionUser?.role === "CASHIER") {
+      const assigned = await prisma.cashierSite.findMany({
+        where: { cashierId: sessionUser.id },
+        select: { siteId: true },
+      });
+      where = {
+        ownerId,
+        id: { in: assigned.map((a) => a.siteId) },
+      };
+    }
+
     const sites = await prisma.site.findMany({
-      where: { ownerId },
+      where,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -46,13 +61,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const owner = await requireOwner();
+    const owner = await requireOwnerWithSubscription();
     if (!owner.ok) return jsonError(owner.error, owner.status);
     const ownerId = owner.ownerId;
 
     const quota = await getSiteQuota(ownerId);
     if (!quota.ok) {
-      return jsonError(quota.reason ?? "Site limit reached", 403, {
+      return jsonError(quota.reason ?? "Site limit reached", quota.locked ? 402 : 403, {
         usedSites: quota.usedSites,
         maxSites: quota.maxSites,
         plan: quota.plan
