@@ -75,7 +75,7 @@ services:
       [
         "bash",
         "-lc",
-        "apt-get update -qq && apt-get install -y -qq openssl ca-certificates >/dev/null && npm ci --ignore-scripts && npx prisma generate && npx prisma db push --skip-generate",
+        "apt-get update -qq && apt-get install -y -qq openssl ca-certificates >/dev/null && npm ci --ignore-scripts && npx prisma generate && npx prisma db push --skip-generate && npm install -g tsx && npx tsx prisma/seed.ts",
       ]
     profiles: ["migrate"]
 
