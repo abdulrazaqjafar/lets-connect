@@ -21,6 +21,9 @@ ENV NEXT_PUBLIC_PORTAL_URL=http://18.199.177.29
 ENV PORTAL_DOMAIN=tech-spherewifi.xyz
 ENV CLOUD_RADIUS_IP=18.199.177.29
 ENV RADIUS_HOST=18.199.177.29
+# Small VPS: raise heap + fewer workers (pair with swap on host)
+ENV NODE_OPTIONS=--max-old-space-size=1536
+ENV NEXT_DISABLE_SWC_WASM=1
 RUN npx prisma generate && npm run build
 
 FROM node:22-bookworm-slim AS runner
