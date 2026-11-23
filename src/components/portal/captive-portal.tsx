@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Radio, Signal, Wifi } from "lucide-react";
+import { Wifi } from "lucide-react";
 import {
   AutoLoginForm,
   type MikroTikLoginPayload,
@@ -10,7 +10,9 @@ import {
   PaymentModal,
   type PortalPackageOption,
 } from "@/components/portal/payment-modal";
+import { BrandLogo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type PortalSite = {
   id: string;
@@ -42,13 +44,15 @@ export function CaptivePortal({ initialQuery }: CaptivePortalProps) {
   const [payOpen, setPayOpen] = useState(false);
   const [login, setLogin] = useState<MikroTikLoginPayload | null>(null);
 
+  const brandColor = "#14b8a6";
+
   const loadPackages = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
 
     if (!mac || !linkLoginOnly) {
       setLoadError(
-        "This page must be opened from the Wi‑Fi hotspot (missing mac or link-login-only).",
+        "Open this page from the Wi‑Fi hotspot (missing redirect parameters).",
       );
       setLoading(false);
       return;
@@ -74,121 +78,137 @@ export function CaptivePortal({ initialQuery }: CaptivePortalProps) {
   }, [loadPackages]);
 
   return (
-    <div className="portal-shell relative min-h-dvh overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(13,148,136,0.18),_transparent_55%),linear-gradient(180deg,#f4faf9_0%,#eef6f4_45%,#f7faf9_100%)]" />
-      <div className="pointer-events-none absolute -top-24 right-[-20%] h-64 w-64 rounded-full bg-teal-400/20 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-[-10%] left-[-15%] h-56 w-56 rounded-full bg-cyan-300/20 blur-3xl" />
+    <div className="relative min-h-dvh overflow-hidden">
+      <div className="absolute inset-0 bg-[#061018]" />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 left-1/2 h-[28rem] w-[36rem] -translate-x-1/2 rounded-full blur-3xl"
+        style={{
+          background: `radial-gradient(circle, color-mix(in srgb, ${brandColor} 55%, transparent), transparent 70%)`,
+        }}
+      />
 
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-8 pt-6 sm:px-6">
-        <header className="mb-6 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold tracking-[0.2em] text-teal-800/70 uppercase">
-              Lets Connect
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-              {site?.name ?? "Wi‑Fi access"}
-            </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Pick a plan and pay instantly with mobile money.
-            </p>
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-7 sm:px-5">
+        <header className="mb-6 text-center text-white">
+          <div className="mx-auto mb-4 inline-flex rounded-2xl bg-white/95 px-4 py-2.5 shadow-lg">
+            <BrandLogo />
           </div>
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-teal-700 text-white shadow-sm">
-            <Wifi className="size-5" />
-          </div>
+          <p className="text-[11px] font-semibold tracking-[0.22em] text-white/55 uppercase">
+            Internet access
+          </p>
+          <h1 className="mt-2 font-heading text-3xl font-semibold tracking-[-0.03em]">
+            {site?.name ?? "Wi‑Fi access"}
+          </h1>
+          <p className="mx-auto mt-2 max-w-xs text-sm text-white/65">
+            Pick a plan and pay with mobile money.
+          </p>
         </header>
 
         {(mikrotikError || loadError) && (
-          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <div className="mb-4 rounded-2xl border border-amber-200/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50">
             {mikrotikError ? <p>Router: {mikrotikError}</p> : null}
             {loadError ? <p>{loadError}</p> : null}
           </div>
         )}
 
-        {login ? (
-          <AutoLoginForm login={login} />
-        ) : (
-          <>
-            <div className="mb-4 flex flex-wrap gap-2 text-xs text-slate-600">
-              {mac ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200">
-                  <Signal className="size-3.5" />
-                  {mac}
-                </span>
-              ) : null}
-              {clientIp ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200">
-                  <Radio className="size-3.5" />
-                  {clientIp}
-                </span>
-              ) : null}
-            </div>
+        <div className="overflow-hidden rounded-[1.75rem] bg-white shadow-[0_28px_80px_-28px_rgba(0,0,0,0.65)]">
+          {login ? (
+            <AutoLoginForm login={login} brandColor={brandColor} />
+          ) : (
+            <div className="space-y-4 p-5 sm:p-6">
+              <div className="flex items-end justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+                    Choose plan
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Tap a plan to pay and connect
+                  </p>
+                </div>
+                <Wifi className="mb-0.5 size-4 text-teal-500/50" />
+              </div>
 
-            <section className="flex-1 space-y-3">
               {loading ? (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {[0, 1, 2].map((key) => (
                     <div
                       key={key}
-                      className="h-28 animate-pulse rounded-2xl bg-white/70 ring-1 ring-slate-200/80"
+                      className="h-[4.5rem] animate-pulse rounded-2xl bg-slate-100"
                     />
                   ))}
                 </div>
               ) : packages.length === 0 ? (
-                <div className="rounded-2xl bg-white/80 px-4 py-8 text-center text-sm text-slate-600 ring-1 ring-slate-200">
+                <p className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                   No active packages for this hotspot yet.
-                </div>
+                </p>
               ) : (
-                packages.map((pkg, index) => (
-                  <button
-                    key={pkg.id}
-                    type="button"
-                    onClick={() => {
-                      setSelected(pkg);
-                      setPayOpen(true);
-                    }}
-                    className="group w-full rounded-2xl bg-white/90 p-4 text-left shadow-sm ring-1 ring-slate-200/90 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-teal-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-                    style={{ animationDelay: `${index * 60}ms` }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">{pkg.name}</p>
-                        <p className="mt-0.5 text-sm text-slate-600">
-                          {pkg.validityLabel}
-                          {pkg.dataLimitMb ? ` · ${pkg.dataLimitMb} MB` : ""}
-                        </p>
-                        <p className="mt-2 text-xs text-slate-500">
-                          ↓ {pkg.downloadLabel} · ↑ {pkg.uploadLabel}
-                        </p>
+                <div className="space-y-2">
+                  {packages.map((pkg) => (
+                    <button
+                      key={pkg.id}
+                      type="button"
+                      onClick={() => {
+                        setSelected(pkg);
+                        setPayOpen(true);
+                      }}
+                      className={cn(
+                        "group w-full rounded-2xl border border-slate-200/90 bg-slate-50/80 px-4 py-3.5 text-left transition duration-200",
+                        "hover:border-slate-300 hover:bg-white",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-heading text-[15px] font-semibold tracking-tight text-slate-900">
+                            {pkg.name}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {pkg.validityLabel}
+                            {pkg.dataLimitMb
+                              ? ` · ${pkg.dataLimitMb} MB`
+                              : " · Unlimited data"}
+                          </p>
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            ↓ {pkg.downloadLabel} · ↑ {pkg.uploadLabel}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="font-heading text-lg font-semibold leading-none text-slate-950">
+                            {pkg.priceAmount.toLocaleString("en-TZ")}
+                          </p>
+                          <p className="mt-1 text-[10px] font-medium tracking-wider text-slate-400 uppercase">
+                            {pkg.priceCurrency}
+                          </p>
+                        </div>
                       </div>
-                      <div className="rounded-xl bg-teal-700 px-3 py-2 text-right text-white">
-                        <p className="text-lg font-semibold leading-none">
-                          {pkg.priceAmount}
-                        </p>
-                        <p className="mt-1 text-[10px] tracking-wide uppercase opacity-90">
-                          {pkg.priceCurrency}
-                        </p>
-                      </div>
-                    </div>
-                    {pkg.description ? (
-                      <p className="mt-3 text-sm text-slate-600">{pkg.description}</p>
-                    ) : null}
-                  </button>
-                ))
+                    </button>
+                  ))}
+                </div>
               )}
-            </section>
 
-            <div className="mt-6">
               <Button
                 variant="outline"
-                className="w-full bg-white/70"
+                className="h-11 w-full rounded-xl border-slate-200"
                 onClick={() => void loadPackages()}
                 disabled={loading}
               >
                 Refresh plans
               </Button>
             </div>
-          </>
-        )}
+          )}
+        </div>
+
+        <footer className="mt-6 space-y-1.5 text-center">
+          {(mac || clientIp) && (
+            <p className="truncate font-mono text-[10px] tracking-wide text-white/30">
+              {[mac && `MAC ${mac}`, clientIp && `IP ${clientIp}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+          <p className="text-[11px] text-white/40">
+            Powered by <span className="text-white/55">Lets Connect</span>
+          </p>
+        </footer>
       </div>
 
       {site ? (

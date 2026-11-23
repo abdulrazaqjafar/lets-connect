@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Smartphone, Ticket } from "lucide-react";
+import { Loader2, Smartphone, Ticket, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/logo";
 import {
@@ -11,6 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatTzs } from "@/lib/money";
+import { cn } from "@/lib/utils";
+
 type PortalPackage = {
   id: string;
   name: string;
@@ -38,6 +41,12 @@ type SitePortalProps = {
   siteId: string;
   queryString: string;
 };
+
+const MNO = [
+  { value: "MPESA" as const, label: "M-Pesa" },
+  { value: "TIGO_PESA" as const, label: "Mixx" },
+  { value: "AIRTEL_MONEY" as const, label: "Airtel" },
+];
 
 export function SitePortal({ siteId, queryString }: SitePortalProps) {
   const params = useMemo(() => new URLSearchParams(queryString), [queryString]);
@@ -102,7 +111,7 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
         if (payload.status === "FAILED") {
           if (!cancelled) {
             setWaitingPayment(false);
-            setError(payload.failureReason ?? "Malipo yameshindikana. Jaribu tena.");
+            setError(payload.failureReason ?? "Payment failed. Please try again.");
           }
           return;
         }
@@ -132,7 +141,9 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
         window.setTimeout(poll, 2000);
       } else if (!cancelled) {
         setWaitingPayment(false);
-        setError("Muda wa malipo umeisha. Kama umelipwa, wasiliana na msaada.");
+        setError(
+          "Payment timed out. If you were charged, ask the cashier or try again.",
+        );
       }
     };
 
@@ -144,7 +155,6 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
 
   useEffect(() => {
     if (!autoLoginUrl || redirected.current) return;
-    // Prefer GET redirect when provider returned login URL; form POST still runs via AutoLoginForm
     if (!linkLoginOnly && autoLoginUrl) {
       redirected.current = true;
       window.setTimeout(() => {
@@ -160,7 +170,7 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
       return;
     }
     if (!mac || !linkLoginOnly) {
-      setError("Open this page from the Wi‑Fi hotspot (mac / link-login-only).");
+      setError("Open this page from the Wi‑Fi network (hotspot redirect).");
       return;
     }
 
@@ -216,7 +226,7 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
         password: payload.loginPassword,
         linkLoginOnly: payload.linkLoginOnly || linkLoginOnly || payload.autoLoginUrl,
       });
-      toast.success("Voucher accepted — connecting…");
+      toast.success("Connected — starting session…");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Voucher failed");
     } finally {
@@ -224,267 +234,397 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
     }
   }
 
-  const brandColor = site?.brandPrimaryColor || "#0d9488";
-  const displayName = site?.brandName || site?.name || "Wi‑Fi Portal";
+  const brandColor = site?.brandPrimaryColor || "#14b8a6";
+  const displayName = site?.brandName || site?.name || "Wi‑Fi";
+  const selectedPkg = packages.find((p) => p.id === selectedPackageId);
 
   return (
     <div
-      className="relative min-h-dvh overflow-hidden bg-[#071018] px-4 py-6"
+      className="portal-root relative min-h-dvh overflow-hidden text-slate-900"
       style={{ ["--portal-brand" as string]: brandColor }}
     >
+      <style>{`
+        @keyframes portal-rise {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes portal-pulse {
+          0%, 100% { opacity: 0.45; transform: scale(1); }
+          50% { opacity: 0.75; transform: scale(1.04); }
+        }
+        .portal-rise { animation: portal-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .portal-rise-delay-1 { animation-delay: 0.08s; }
+        .portal-rise-delay-2 { animation-delay: 0.16s; }
+        .portal-glow { animation: portal-pulse 8s ease-in-out infinite; }
+      `}</style>
+
+      <div className="absolute inset-0 bg-[#061018]" />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0"
+        className="portal-glow pointer-events-none absolute -top-32 left-1/2 h-[28rem] w-[36rem] -translate-x-1/2 rounded-full blur-3xl"
         style={{
-          background: `radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, ${brandColor} 40%, transparent), transparent 55%), radial-gradient(ellipse 60% 40% at 100% 100%, rgba(14,116,144,0.2), transparent 50%), #071018`,
+          background: `radial-gradient(circle, color-mix(in srgb, ${brandColor} 55%, transparent), transparent 70%)`,
         }}
       />
-      <div className="relative mx-auto flex w-full max-w-md flex-col gap-5">
-        <header className="space-y-4 rounded-3xl border border-white/10 bg-white/95 p-5 shadow-[0_30px_60px_-35px_rgba(0,0,0,0.7)] backdrop-blur">
-          {site?.brandLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={site.brandLogoUrl}
-              alt={displayName}
-              className="h-10 w-auto max-w-[180px] object-contain"
-            />
-          ) : (
-            <BrandLogo />
-          )}
-          <div>
-            <h1 className="font-heading text-2xl font-semibold tracking-tight text-slate-900">
-              {displayName}
-            </h1>
-            {site?.location ? (
-              <p className="mt-0.5 text-sm text-slate-600">{site.location}</p>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
+          maskImage:
+            "radial-gradient(ellipse 70% 60% at 50% 20%, black, transparent)",
+        }}
+      />
+
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-7 sm:px-5">
+        <header className="portal-rise mb-6 text-center text-white">
+          <div className="mx-auto mb-4 flex justify-center">
+            {site?.brandLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={site.brandLogoUrl}
+                alt={displayName}
+                className="h-12 w-auto max-w-[200px] object-contain drop-shadow-lg"
+              />
             ) : (
-              <p className="mt-0.5 text-sm text-slate-600">
-                Choose a package or enter a voucher
-              </p>
+              <div className="rounded-2xl bg-white/95 px-4 py-2.5 shadow-lg">
+                <BrandLogo />
+              </div>
             )}
           </div>
+          <p className="text-[11px] font-semibold tracking-[0.22em] text-white/55 uppercase">
+            Internet access
+          </p>
+          <h1 className="mt-2 font-heading text-3xl font-semibold tracking-[-0.03em] text-white sm:text-[2.1rem]">
+            {displayName}
+          </h1>
+          <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/65">
+            {site?.location
+              ? site.location
+              : "Buy a plan with mobile money or redeem a cash voucher."}
+          </p>
         </header>
 
-        {(mac || ip) && (
-          <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
-            {mac ? (
-              <span className="rounded-full bg-white/8 px-2.5 py-1 ring-1 ring-white/15">
-                MAC {mac}
-              </span>
-            ) : null}
-            {ip ? (
-              <span className="rounded-full bg-white/8 px-2.5 py-1 ring-1 ring-white/15">
-                IP {ip}
-              </span>
-            ) : null}
-          </div>
-        )}
-
-        {login ? (
-          <div className="rounded-3xl border border-white/10 bg-white p-4 shadow-xl">
-            <AutoLoginForm
-              login={login}
-              onSubmitted={() => {
-                if (autoLoginUrl && !linkLoginOnly) {
-                  window.location.href = autoLoginUrl;
-                }
-              }}
-            />
-          </div>
-        ) : (
-          <div className="space-y-4 rounded-3xl border border-white/10 bg-white p-4 shadow-xl">
-            <div className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => setTab("lipa")}
-                className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  tab === "lipa" ? "text-white shadow-sm" : "text-slate-600"
-                }`}
-                style={tab === "lipa" ? { backgroundColor: brandColor } : undefined}
-              >
-                <Smartphone className="size-4" />
-                Mobile money
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("voucher")}
-                className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  tab === "voucher" ? "text-white shadow-sm" : "text-slate-600"
-                }`}
-                style={
-                  tab === "voucher" ? { backgroundColor: brandColor } : undefined
-                }
-              >
-                <Ticket className="size-4" />
-                Cash voucher
-              </button>
+        <div className="portal-rise portal-rise-delay-1 flex flex-1 flex-col">
+          {login ? (
+            <div className="overflow-hidden rounded-[1.75rem] bg-white shadow-[0_28px_80px_-28px_rgba(0,0,0,0.65)]">
+              <AutoLoginForm
+                brandColor={brandColor}
+                login={login}
+                onSubmitted={() => {
+                  if (autoLoginUrl && !linkLoginOnly) {
+                    window.location.href = autoLoginUrl;
+                  }
+                }}
+              />
             </div>
-
-            {error ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                {error}
-              </div>
-            ) : null}
-
-            {tab === "lipa" ? (
-              <section className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-800">Packages</p>
-                  {loading ? (
-                    <div className="space-y-2">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="h-24 animate-pulse rounded-2xl bg-white/70 ring-1 ring-slate-200"
-                        />
-                      ))}
-                    </div>
-                  ) : packages.length === 0 ? (
-                    <p className="rounded-2xl bg-white/80 px-4 py-6 text-center text-sm text-slate-600 ring-1 ring-slate-200">
-                      No packages available.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {packages.map((pkg) => {
-                        const selected = selectedPackageId === pkg.id;
-                        return (
-                          <button
-                            key={pkg.id}
-                            type="button"
-                            onClick={() => setSelectedPackageId(pkg.id)}
-                            className={`w-full rounded-2xl p-4 text-left transition ring-1 ${
-                              selected
-                                ? "bg-teal-50 ring-teal-500 shadow-sm"
-                                : "bg-white/90 ring-slate-200 hover:ring-teal-300"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-slate-900">
-                                  {pkg.name}
-                                </p>
-                                <p className="mt-0.5 text-sm text-slate-600">
-                                  {pkg.validityLabel}
-                                  {pkg.dataLimitMb ? ` · ${pkg.dataLimitMb} MB` : ""}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  ↓ {pkg.downloadLabel} · ↑ {pkg.uploadLabel}
-                                </p>
-                              </div>
-                              <div className="rounded-xl bg-teal-700 px-3 py-2 text-white">
-                                <p className="text-lg font-semibold leading-none">
-                                  {pkg.priceAmount.toLocaleString()}
-                                </p>
-                                <p className="mt-1 text-[10px] uppercase opacity-90">
-                                  {pkg.priceCurrency}
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["MPESA", "M-Pesa"],
-                      ["TIGO_PESA", "Tigo"],
-                      ["AIRTEL_MONEY", "Airtel"],
-                    ] as const
-                  ).map(([value, label]) => (
+          ) : (
+            <div className="overflow-hidden rounded-[1.75rem] bg-white shadow-[0_28px_80px_-28px_rgba(0,0,0,0.65)]">
+              <div className="grid grid-cols-2 border-b border-slate-100">
+                {(
+                  [
+                    { id: "lipa" as const, label: "Pay", icon: Smartphone },
+                    { id: "voucher" as const, label: "Voucher", icon: Ticket },
+                  ] as const
+                ).map((item) => {
+                  const active = tab === item.id;
+                  const Icon = item.icon;
+                  return (
                     <button
-                      key={value}
+                      key={item.id}
                       type="button"
-                      onClick={() => setProvider(value)}
-                      className={`rounded-xl border px-2 py-2.5 text-xs font-medium ${
-                        provider === value
-                          ? "border-teal-600 bg-teal-50 text-teal-950"
-                          : "border-slate-200 bg-white text-slate-600"
-                      }`}
+                      onClick={() => {
+                        setTab(item.id);
+                        setError(null);
+                      }}
+                      className={cn(
+                        "relative flex items-center justify-center gap-2 px-3 py-3.5 text-sm font-medium transition",
+                        active ? "text-slate-950" : "text-slate-400 hover:text-slate-600",
+                      )}
                     >
-                      {label}
+                      <Icon className="size-4" />
+                      {item.label}
+                      {active ? (
+                        <span
+                          className="absolute inset-x-6 bottom-0 h-0.5 rounded-full"
+                          style={{ backgroundColor: brandColor }}
+                        />
+                      ) : null}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
+              </div>
 
-                <div className="grid gap-1.5">
-                  <Label htmlFor="phone">Phone number</Label>
-                  <Input
-                    id="phone"
-                    inputMode="tel"
-                    placeholder="07XXXXXXXX"
-                    value={phone}
-                    disabled={submitting || waitingPayment}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="h-11 bg-white text-base"
-                  />
-                </div>
-
-                {waitingPayment ? (
-                  <div className="flex items-center gap-2 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
-                    <Loader2 className="size-4 animate-spin" />
-                    Waiting for payment confirmation…
+              <div className="space-y-5 p-5 sm:p-6">
+                {error ? (
+                  <div
+                    role="alert"
+                    className="rounded-2xl border border-rose-200/80 bg-rose-50 px-4 py-3 text-sm text-rose-950"
+                  >
+                    {error}
                   </div>
                 ) : null}
 
-                <Button
-                  className="h-11 w-full bg-teal-700 text-white hover:bg-teal-800"
-                  disabled={submitting || waitingPayment || !phone.trim()}
-                  onClick={() => void submitMobileMoney()}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Sending…
-                    </>
-                  ) : (
-                    "Pay now"
-                  )}
-                </Button>
-              </section>
-            ) : (
-              <section className="space-y-4">
-                <div className="rounded-2xl bg-white/90 p-4 ring-1 ring-slate-200">
-                  <p className="text-sm font-medium text-slate-900">
-                    Ingiza Cash Voucher
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Enter the code printed on your voucher.
-                  </p>
-                  <div className="mt-4 grid gap-1.5">
-                    <Label htmlFor="voucher">Voucher code</Label>
-                    <Input
-                      id="voucher"
-                      placeholder="LCXXXXXXXX"
-                      value={voucherCode}
-                      disabled={submitting}
-                      onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
-                      className="h-11 bg-white font-mono text-base tracking-wider"
-                    />
-                  </div>
-                </div>
+                {tab === "lipa" ? (
+                  <section className="space-y-5">
+                    <div>
+                      <div className="mb-3 flex items-end justify-between gap-2">
+                        <div>
+                          <p className="text-[11px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+                            Choose plan
+                          </p>
+                          <p className="mt-0.5 text-sm text-slate-500">
+                            Select how long you need online
+                          </p>
+                        </div>
+                        <Wifi
+                          className="mb-0.5 size-4 opacity-40"
+                          style={{ color: brandColor }}
+                        />
+                      </div>
 
-                <Button
-                  className="h-11 w-full bg-teal-700 text-white hover:bg-teal-800"
-                  disabled={submitting || voucherCode.trim().length < 4}
-                  onClick={() => void submitVoucher()}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Verifying…
-                    </>
-                  ) : (
-                    "Connect Wi‑Fi"
-                  )}
-                </Button>
-              </section>
-            )}
-          </div>
-        )}
+                      {loading ? (
+                        <div className="space-y-2.5">
+                          {[0, 1, 2].map((i) => (
+                            <div
+                              key={i}
+                              className="h-[4.5rem] animate-pulse rounded-2xl bg-slate-100"
+                            />
+                          ))}
+                        </div>
+                      ) : packages.length === 0 ? (
+                        <p className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                          No packages available right now.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {packages.map((pkg) => {
+                            const selected = selectedPackageId === pkg.id;
+                            return (
+                              <button
+                                key={pkg.id}
+                                type="button"
+                                onClick={() => setSelectedPackageId(pkg.id)}
+                                className={cn(
+                                  "group relative w-full overflow-hidden rounded-2xl border px-4 py-3.5 text-left transition duration-200",
+                                  selected
+                                    ? "border-transparent bg-slate-950 text-white shadow-md"
+                                    : "border-slate-200/90 bg-slate-50/80 hover:border-slate-300 hover:bg-white",
+                                )}
+                              >
+                                {selected ? (
+                                  <span
+                                    className="absolute inset-y-0 left-0 w-1"
+                                    style={{ backgroundColor: brandColor }}
+                                  />
+                                ) : null}
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="min-w-0 pl-1">
+                                    <p
+                                      className={cn(
+                                        "font-heading text-[15px] font-semibold tracking-tight",
+                                        selected ? "text-white" : "text-slate-900",
+                                      )}
+                                    >
+                                      {pkg.name}
+                                    </p>
+                                    <p
+                                      className={cn(
+                                        "mt-0.5 text-xs",
+                                        selected ? "text-white/65" : "text-slate-500",
+                                      )}
+                                    >
+                                      {pkg.validityLabel}
+                                      {pkg.dataLimitMb
+                                        ? ` · ${pkg.dataLimitMb} MB`
+                                        : " · Unlimited data"}
+                                    </p>
+                                    <p
+                                      className={cn(
+                                        "mt-1 text-[11px]",
+                                        selected ? "text-white/45" : "text-slate-400",
+                                      )}
+                                    >
+                                      ↓ {pkg.downloadLabel} · ↑ {pkg.uploadLabel}
+                                    </p>
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    <p
+                                      className={cn(
+                                        "font-heading text-lg font-semibold leading-none tracking-tight",
+                                        selected ? "text-white" : "text-slate-950",
+                                      )}
+                                    >
+                                      {pkg.priceAmount.toLocaleString("en-TZ")}
+                                    </p>
+                                    <p
+                                      className={cn(
+                                        "mt-1 text-[10px] font-medium tracking-wider uppercase",
+                                        selected ? "text-white/50" : "text-slate-400",
+                                      )}
+                                    >
+                                      {pkg.priceCurrency}
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-[11px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+                        Mobile network
+                      </p>
+                      <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+                        {MNO.map((item) => {
+                          const active = provider === item.value;
+                          return (
+                            <button
+                              key={item.value}
+                              type="button"
+                              onClick={() => setProvider(item.value)}
+                              className={cn(
+                                "flex-1 rounded-lg px-2 py-2 text-xs font-semibold transition",
+                                active
+                                  ? "bg-white text-slate-950 shadow-sm"
+                                  : "text-slate-500 hover:text-slate-700",
+                              )}
+                            >
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="phone" className="text-slate-600">
+                        Phone number
+                      </Label>
+                      <Input
+                        id="phone"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder="07XX XXX XXX"
+                        value={phone}
+                        disabled={submitting || waitingPayment}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="h-12 rounded-xl border-slate-200 bg-white text-base tracking-wide shadow-none focus-visible:ring-[color:var(--portal-brand)]"
+                      />
+                    </div>
+
+                    {waitingPayment ? (
+                      <div
+                        className="flex items-start gap-3 rounded-2xl px-4 py-3.5 text-sm"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${brandColor} 12%, white)`,
+                          color: "#0f172a",
+                        }}
+                      >
+                        <Loader2
+                          className="mt-0.5 size-4 shrink-0 animate-spin"
+                          style={{ color: brandColor }}
+                        />
+                        <div>
+                          <p className="font-medium">Confirm on your phone</p>
+                          <p className="mt-0.5 text-xs text-slate-600">
+                            Approve the payment prompt, then we will connect you
+                            automatically.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <Button
+                      className="h-12 w-full rounded-xl text-[15px] font-semibold text-white shadow-lg transition hover:brightness-110"
+                      style={{
+                        backgroundColor: brandColor,
+                        boxShadow: `0 14px 30px -12px color-mix(in srgb, ${brandColor} 70%, transparent)`,
+                      }}
+                      disabled={submitting || waitingPayment || !phone.trim()}
+                      onClick={() => void submitMobileMoney()}
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          Sending…
+                        </>
+                      ) : waitingPayment ? (
+                        "Waiting…"
+                      ) : selectedPkg ? (
+                        `Pay ${formatTzs(selectedPkg.priceAmount)}`
+                      ) : (
+                        "Pay now"
+                      )}
+                    </Button>
+                  </section>
+                ) : (
+                  <section className="space-y-5">
+                    <div>
+                      <p className="text-[11px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+                        Cash voucher
+                      </p>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-500">
+                        Enter the code from your printed voucher to start browsing.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="voucher" className="text-slate-600">
+                        Voucher code
+                      </Label>
+                      <Input
+                        id="voucher"
+                        placeholder="LCXXXXXXXX"
+                        value={voucherCode}
+                        disabled={submitting}
+                        onChange={(e) =>
+                          setVoucherCode(e.target.value.toUpperCase().replace(/\s/g, ""))
+                        }
+                        className="h-14 rounded-xl border-slate-200 bg-slate-50 text-center font-mono text-xl tracking-[0.28em] shadow-none focus-visible:ring-[color:var(--portal-brand)]"
+                      />
+                    </div>
+
+                    <Button
+                      className="h-12 w-full rounded-xl text-[15px] font-semibold text-white shadow-lg transition hover:brightness-110"
+                      style={{
+                        backgroundColor: brandColor,
+                        boxShadow: `0 14px 30px -12px color-mix(in srgb, ${brandColor} 70%, transparent)`,
+                      }}
+                      disabled={submitting || voucherCode.trim().length < 4}
+                      onClick={() => void submitVoucher()}
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          Verifying…
+                        </>
+                      ) : (
+                        "Connect to Wi‑Fi"
+                      )}
+                    </Button>
+                  </section>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <footer className="portal-rise portal-rise-delay-2 mt-6 space-y-1.5 text-center">
+          {(mac || ip) && (
+            <p className="truncate font-mono text-[10px] tracking-wide text-white/30">
+              {[mac && `MAC ${mac}`, ip && `IP ${ip}`].filter(Boolean).join(" · ")}
+            </p>
+          )}
+          <p className="text-[11px] text-white/40">
+            Powered by <span className="text-white/55">Lets Connect</span>
+          </p>
+        </footer>
       </div>
     </div>
   );

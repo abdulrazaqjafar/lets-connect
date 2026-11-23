@@ -49,6 +49,43 @@ const CAPABILITIES = [
   },
 ] as const;
 
+const DEVICES = [
+  {
+    name: "MikroTik",
+    subtitle: "RouterOS Integration",
+    status: "ready" as const,
+    statusLabel: "Ready",
+    body: "Transform your MikroTik infrastructure with cloud RADIUS, automated billing, and seamless PPPoE and hotspot voucher management.",
+    features: [
+      "Cloud User Management",
+      "PPPoE Automation",
+      "Bandwidth Management",
+      "Voucher Portal",
+    ],
+  },
+  {
+    name: "TP-Link Omada",
+    subtitle: "SDN Controller",
+    status: "soon" as const,
+    statusLabel: "Coming Soon",
+    body: "Connect controller-managed Omada gateways and access points to LetsConnect with external RADIUS authentication, captive-portal billing, and voucher management.",
+    features: [
+      "Omada Gateways & APs",
+      "RADIUS Portal",
+      "Payment Gateway",
+      "Voucher Management",
+    ],
+  },
+  {
+    name: "Ruijie",
+    subtitle: "Enterprise WiFi",
+    status: "soon" as const,
+    statusLabel: "Coming soon",
+    body: "Enhance your Ruijie network with advanced captive portals, detailed analytics, and enterprise-grade user management.",
+    features: ["Cloud Integration", "Captive Portal", "Enterprise Analytics"],
+  },
+] as const;
+
 export default function Home() {
   return (
     <main className="min-h-dvh bg-[#071018] text-white">
@@ -117,7 +154,7 @@ export default function Home() {
                 <ArrowRight className="size-4" />
               </Link>
               <Link
-                href="#capabilities"
+                href="#devices"
                 className={cn(
                   buttonVariants({
                     size: "lg",
@@ -127,7 +164,7 @@ export default function Home() {
                   }),
                 )}
               >
-                See capabilities
+                Supported devices
               </Link>
             </div>
           </div>
@@ -162,7 +199,72 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="pricing" className="scroll-mt-8 bg-[#071018] px-5 py-14 sm:px-8">
+      <section
+        id="devices"
+        className="scroll-mt-8 border-t border-white/5 bg-[#071018] px-5 py-16 sm:px-8"
+      >
+        <div className="mx-auto max-w-6xl">
+          <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+            Devices we support
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            Start on MikroTik today. Omada and Ruijie are next on the roadmap.
+          </p>
+
+          <div className="mt-10 grid gap-8 lg:grid-cols-3">
+            {DEVICES.map((device) => (
+              <article
+                key={device.name}
+                className={cn(
+                  "flex flex-col border-t pt-6",
+                  device.status === "ready"
+                    ? "border-teal-400/60"
+                    : "border-white/10 opacity-90",
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-heading text-xl font-semibold tracking-tight">
+                      {device.name}
+                    </h3>
+                    <p className="mt-0.5 text-sm text-slate-400">{device.subtitle}</p>
+                  </div>
+                  <span
+                    className={cn(
+                      "shrink-0 text-[11px] font-semibold tracking-wide uppercase",
+                      device.status === "ready"
+                        ? "text-teal-300"
+                        : "text-slate-500",
+                    )}
+                  >
+                    {device.statusLabel}
+                  </span>
+                </div>
+                <p className="mt-4 text-sm leading-relaxed text-slate-400">
+                  {device.body}
+                </p>
+                <ul className="mt-5 space-y-2 text-sm text-slate-300">
+                  {device.features.map((feature) => (
+                    <li key={feature} className="flex gap-2">
+                      <Check
+                        className={cn(
+                          "mt-0.5 size-3.5 shrink-0",
+                          device.status === "ready"
+                            ? "text-teal-400"
+                            : "text-slate-600",
+                        )}
+                      />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="scroll-mt-8 bg-[#0b1520] px-5 py-14 sm:px-8">
         <div className="mx-auto max-w-6xl">
           <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             Subscriptions

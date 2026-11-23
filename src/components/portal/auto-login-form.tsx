@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Loader2, Wifi } from "lucide-react";
 
 export type MikroTikLoginPayload = {
   username: string;
@@ -17,9 +18,11 @@ export type MikroTikLoginPayload = {
  */
 export function AutoLoginForm({
   login,
+  brandColor = "#14b8a6",
   onSubmitted,
 }: {
   login: MikroTikLoginPayload;
+  brandColor?: string;
   onSubmitted?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -32,17 +35,44 @@ export function AutoLoginForm({
     const timer = window.setTimeout(() => {
       onSubmitted?.();
       formRef.current?.submit();
-    }, 600);
+    }, 700);
 
     return () => window.clearTimeout(timer);
   }, [login, onSubmitted]);
 
   return (
-    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-center text-emerald-950">
-      <p className="text-sm font-medium">Payment received</p>
-      <p className="mt-1 text-sm text-emerald-800/80">
-        Connecting you to Wi‑Fi…
-      </p>
+    <div className="relative overflow-hidden px-6 py-12 text-center">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-90"
+        style={{
+          background: `radial-gradient(ellipse 80% 60% at 50% 0%, color-mix(in srgb, ${brandColor} 18%, white), transparent 70%)`,
+        }}
+      />
+      <div className="relative">
+        <div
+          className="mx-auto flex size-14 items-center justify-center rounded-2xl text-white shadow-lg"
+          style={{
+            backgroundColor: brandColor,
+            boxShadow: `0 16px 32px -14px color-mix(in srgb, ${brandColor} 80%, transparent)`,
+          }}
+        >
+          <Wifi className="size-6" />
+        </div>
+        <p className="mt-5 font-heading text-xl font-semibold tracking-tight text-slate-950">
+          You&apos;re online
+        </p>
+        <p className="mx-auto mt-2 max-w-[16rem] text-sm leading-relaxed text-slate-500">
+          Session approved. Connecting you to the network…
+        </p>
+        <div className="mt-6 inline-flex items-center gap-2 text-sm text-slate-600">
+          <Loader2
+            className="size-4 animate-spin"
+            style={{ color: brandColor }}
+          />
+          Starting Wi‑Fi session
+        </div>
+      </div>
       <form
         ref={formRef}
         method="POST"
