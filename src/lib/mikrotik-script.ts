@@ -114,6 +114,9 @@ export function generateMikrotikScript(
   })();
   // Local hotspot DNS name (captive detection); voucher UI is via login.html redirect
   const dnsName = options.hotspotDnsName ?? "wifi.local";
+  /** Site-specific voucher portal (phone must land here after Sign in) */
+  const voucherPortalUrl = `${portalBase}/portal/${site.id}`;
+  /** Hotspot login.html that 302/meta-redirects to voucherPortalUrl */
   const loginHtmlUrl = `${portalBase}/api/hotspot/${site.id}/login.html`;
   const iface = options.hotspotInterface ?? "bridge-hotspot";
   const wan = options.wanInterface ?? "ether1";
@@ -325,33 +328,55 @@ export function generateMikrotikScript(
   );
   push();
 
-  push("# --- 11) Captive login → site voucher portal (NOT wifi.local form) ---");
-  push("# Phone \"Sign in to network\" opens http://wifi.local/login");
-  push("# This login.html immediately redirects to the cloud portal for THIS site.");
+  push("# ============================================================");
+  push("# --- 11) REDIRECT → voucher portal for THIS site ---");
+  push(`# Site: ${site.name}`);
+  push(`# Voucher portal URL: ${voucherPortalUrl}`);
+  push(`# login.html source:  ${loginHtmlUrl}`);
+  push("# Phone Sign-in opens wifi.local/login → auto-redirects to portal above");
+  push("# ============================================================");
+  cmd(`:local lcPortalUrl "${escapeRos(voucherPortalUrl)}"`);
+  cmd(`:local lcLoginHtml "${escapeRos(loginHtmlUrl)}"`);
+  cmd(`:put ("Lets Connect voucher portal: " . $lcPortalUrl)`);
   cmd(
     `:do { /ip dns static remove [find where name="wifi.local" and comment~"${escapeRos(comment)}"] } on-error={}`,
   );
   cmd(
     `/ip dns static add name=wifi.local address=${escapeRos(gwIp)} comment="${escapeRos(comment)}"`,
   );
+  // Allow voucher portal host before fetching redirect page
+  cmd(
+    `:do { /ip hotspot walled-garden remove [find where comment="${escapeRos(`${comment} portal-redirect`)}"] } on-error={}`,
+  );
+  cmd(
+    `/ip hotspot walled-garden add dst-host="${escapeRos(portalIp)}" action=allow comment="${escapeRos(`${comment} portal-redirect`)}" disabled=no`,
+  );
+  cmd(
+    `:do { /ip hotspot walled-garden ip remove [find where comment="${escapeRos(`${comment} portal-redirect-ip`)}"] } on-error={}`,
+  );
+  cmd(
+    `/ip hotspot walled-garden ip add dst-address=${escapeRos(portalIp.match(/^\d+\.\d+\.\d+\.\d+$/) ? portalIp : DEFAULT_PORTAL_IP)} action=allow comment="${escapeRos(`${comment} portal-redirect-ip`)}"`,
+  );
   cmd(`:do { /ip hotspot reset-html hotspot } on-error={}`);
-  // Fetch twice — first attempt can fail if DNS/WAN not ready yet
+  // Install redirect page bound to this site's portal URL
   cmd(
-    `:do { /tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/login.html keep-result=yes } on-error={ :put "WARN: login.html fetch failed — retrying..." }`,
+    `:do { /tool fetch url=$lcLoginHtml dst-path=hotspot/login.html keep-result=yes } on-error={ :put "WARN: voucher redirect fetch failed — retrying..." }`,
+  );
+  cmd(`:delay 2s`);
+  cmd(`/tool fetch url=$lcLoginHtml dst-path=hotspot/login.html keep-result=yes`);
+  cmd(
+    `:do { /tool fetch url=$lcLoginHtml dst-path=hotspot/rlogin.html keep-result=yes } on-error={}`,
   );
   cmd(
-    `:delay 2s; /tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/login.html keep-result=yes`,
+    `:do { /tool fetch url=$lcLoginHtml dst-path=hotspot/redirect.html keep-result=yes } on-error={}`,
   );
-  // Same redirect for rlogin (some phones hit this path)
+  cmd(`:put ("OK: hotspot login redirects to " . $lcPortalUrl)`);
   cmd(
-    `:do { /tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/rlogin.html keep-result=yes } on-error={}`,
+    `:put ("login.html bytes: " . [/file get [/file find name="hotspot/login.html"] size])`,
   );
-  cmd(
-    `:put ("login.html size: " . [/file get [/file find name="hotspot/login.html"] size])`,
-  );
-  push(`# Portal for this site: ${portalBase}/portal/${site.id}`);
+  push(`# Refresh redirect later (same site):`);
   push(
-    `# Re-fetch later: /tool fetch url="${loginHtmlUrl}" dst-path=hotspot/login.html keep-result=yes`,
+    `# /tool fetch url="${loginHtmlUrl}" dst-path=hotspot/login.html keep-result=yes`,
   );
   push();
 
@@ -413,10 +438,10 @@ export function generateMikrotikScript(
     `:put "Lets Connect ready. NAS=${escapeRos(site.nasIdentifier)} RADIUS=${escapeRos(cloudIp)}"`,
   );
   cmd(
-    `:put "Voucher portal: ${escapeRos(portalBase)}/portal/${escapeRos(site.id)}"`,
+    `:put "VOUCHER PORTAL REDIRECT: ${escapeRos(voucherPortalUrl)}"`,
   );
   cmd(
-    `:put "API user ready for cloud control. Connect a phone to SSID LetsConnect."`,
+    `:put "SSID LetsConnect → Sign in → opens that portal (site ${escapeRos(site.name)})"`,
   );
   push();
 
