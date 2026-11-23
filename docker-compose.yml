@@ -56,5 +56,27 @@ services:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
 
+  # One-shot schema sync: docker compose run --rm migrate
+  migrate:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    volumes:
+      - ./prisma:/app/prisma
+      - ./prisma.config.ts:/app/prisma.config.ts
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/lets_connect?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      [
+        "bash",
+        "-lc",
+        "apt-get update -qq && apt-get install -y -qq openssl ca-certificates >/dev/null && npm ci --ignore-scripts && npx prisma generate && npx prisma db push --skip-generate",
+      ]
+    profiles: ["migrate"]
+
 volumes:
   lets_connect_pg:
