@@ -6,10 +6,12 @@ import { queueNotification } from "@/lib/notifications";
 const OTP_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
-export function otpDemoMode() {
+export function otpDemoMode(channel: NotificationChannel = "EMAIL") {
   if (process.env.OTP_DEMO_MODE === "true") return true;
   if (process.env.OTP_DEMO_MODE === "false") return false;
-  return !process.env.SMS_API_KEY?.trim();
+  if (channel === "EMAIL") return !process.env.RESEND_API_KEY?.trim();
+  if (channel === "SMS") return !process.env.SMS_API_KEY?.trim();
+  return true;
 }
 
 export function normalizeTzPhone(phone: string): string | null {
@@ -44,8 +46,12 @@ export type CreateOtpInput = {
 
 export async function createAndSendOtp(input: CreateOtpInput) {
   const code = generateCode();
-  const destination = input.destination.trim().toLowerCase();
-  const channel = input.channel ?? "SMS";
+  const channel = input.channel ?? "EMAIL";
+  const destination =
+    channel === "EMAIL"
+      ? input.destination.trim().toLowerCase()
+      : input.destination.trim();
+  const demo = otpDemoMode(channel);
 
   // Invalidate previous open challenges for same purpose+destination
   await prisma.otpChallenge.updateMany({
@@ -70,7 +76,7 @@ export async function createAndSendOtp(input: CreateOtpInput) {
     },
   });
 
-  const body = `Lets Connect OTP: ${code}. Inatumika kwa dakika 10. Usishiriki na mtu yeyote.`;
+  const body = `Lets Connect OTP: ${code}. Valid for 10 minutes. Do not share this code.`;
 
   if (channel === "EMAIL") {
     await queueNotification({
@@ -98,9 +104,9 @@ export async function createAndSendOtp(input: CreateOtpInput) {
     expiresAt: challenge.expiresAt.toISOString(),
     channel,
     destinationMasked: maskDestination(destination, channel),
-    demo: otpDemoMode(),
-    /** Only returned in demo so you can test without SMS provider */
-    debugOtp: otpDemoMode() ? code : undefined,
+    demo,
+    /** Only returned in demo so you can test without email/SMS provider */
+    debugOtp: demo ? code : undefined,
   };
 }
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { jsonError, jsonOk, handleRouteError } from "@/lib/api";
 import { verifyPassword } from "@/lib/auth";
-import { createAndSendOtp, normalizeTzPhone } from "@/lib/otp";
+import { createAndSendOtp } from "@/lib/otp";
 import { prisma } from "@/lib/prisma";
 
 const loginSchema = z.object({
@@ -10,7 +10,7 @@ const loginSchema = z.object({
 });
 
 /**
- * Step 1 — check password, then send OTP (SMS to phone, else email).
+ * Step 1 — check password, then send OTP via email.
  */
 export async function POST(request: Request) {
   try {
@@ -22,7 +22,6 @@ export async function POST(request: Request) {
       select: {
         id: true,
         email: true,
-        phone: true,
         passwordHash: true,
         isActive: true,
       },
@@ -37,13 +36,10 @@ export async function POST(request: Request) {
       return jsonError("Invalid email or password", 401);
     }
 
-    const phone = user.phone ? normalizeTzPhone(user.phone) : null;
-    const useSms = Boolean(phone);
-
     const otp = await createAndSendOtp({
       purpose: "LOGIN",
-      destination: useSms ? phone! : user.email,
-      channel: useSms ? "SMS" : "EMAIL",
+      destination: user.email,
+      channel: "EMAIL",
       userId: user.id,
       payload: { userId: user.id },
     });
@@ -56,13 +52,9 @@ export async function POST(request: Request) {
       channel: otp.channel,
       demo: otp.demo,
       debugOtp: otp.debugOtp,
-      message: useSms
-        ? otp.demo
-          ? "Demo OTP — use the code shown (add SMS keys for live)"
-          : "OTP sent to your phone"
-        : otp.demo
-          ? "Demo OTP sent to email (logged) — use the code shown"
-          : "OTP sent to your email",
+      message: otp.demo
+        ? "Demo OTP (no email key) — use the code shown"
+        : "OTP sent to your email",
     });
   } catch (error) {
     return handleRouteError(error);

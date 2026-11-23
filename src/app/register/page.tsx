@@ -68,7 +68,7 @@ function RegisterForm() {
       setOtp({
         challengeId: payload.challengeId,
         destinationMasked: payload.destinationMasked ?? "***",
-        channel: payload.channel ?? "SMS",
+        channel: payload.channel ?? "EMAIL",
         demo: payload.demo,
         debugOtp: payload.debugOtp,
         message: payload.message,
@@ -110,10 +110,10 @@ function RegisterForm() {
 
   return (
     <AuthCard
-      title={otp ? "Verify phone" : "Sign up"}
+      title={otp ? "Verify email" : "Sign up"}
       subtitle={
         otp
-          ? "Enter the OTP sent to your phone to create your account."
+          ? "Enter the OTP sent to your email to create your account."
           : "Create an operator account and choose a site subscription."
       }
       footer={
@@ -172,7 +172,7 @@ function RegisterForm() {
             ) : null}
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="phone">Phone (for OTP)</Label>
+            <Label htmlFor="phone">Phone (optional)</Label>
             <Input
               id="phone"
               {...form.register("phone")}

@@ -48,7 +48,7 @@ export default function LoginPage() {
       setOtp({
         challengeId: payload.challengeId,
         destinationMasked: payload.destinationMasked ?? "***",
-        channel: payload.channel ?? "SMS",
+        channel: payload.channel ?? "EMAIL",
         demo: payload.demo,
         debugOtp: payload.debugOtp,
         message: payload.message,

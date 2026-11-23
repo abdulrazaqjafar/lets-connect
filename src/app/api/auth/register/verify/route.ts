@@ -14,7 +14,7 @@ const verifySchema = z.object({
 type RegisterPayload = {
   name: string;
   email: string;
-  phone: string;
+  phone: string | null;
   passwordHash: string;
   planCode: string;
 };
@@ -37,8 +37,7 @@ export async function POST(request: Request) {
       !payload?.email ||
       !payload.passwordHash ||
       !payload.name ||
-      !payload.planCode ||
-      !payload.phone
+      !payload.planCode
     ) {
       return jsonError("Registration session invalid — start again", 400);
     }
@@ -58,7 +57,7 @@ export async function POST(request: Request) {
       data: {
         email: payload.email,
         name: payload.name,
-        phone: payload.phone,
+        phone: payload.phone ?? null,
         passwordHash: payload.passwordHash,
         role: "SITE_OWNER",
       },
