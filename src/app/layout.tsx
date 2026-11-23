@@ -24,6 +24,10 @@ export const metadata: Metadata = {
   title: "Lets Connect — Hotspot OS",
   description:
     "Professional multi-tenant WiFi hotspot platform for sites, packages, vouchers, and MikroTik RADIUS.",
+  icons: {
+    icon: "/brand/lets-connect-mark.png",
+    apple: "/brand/lets-connect-mark.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

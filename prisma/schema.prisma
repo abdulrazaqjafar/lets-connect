@@ -257,7 +257,7 @@ model Site {
   /// Captive portal white-label (branded self-service)
   brandName         String?
   brandLogoUrl      String?
-  brandPrimaryColor String?  @default("#0d9488")
+  brandPrimaryColor String?  @default("#F78E1E")
   brandAccentColor  String?
   /// Preferred local payment gateway for this site's portal
   paymentProvider   PaymentProvider @default(SNIPPE)

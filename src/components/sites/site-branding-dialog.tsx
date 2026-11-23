@@ -47,7 +47,7 @@ export function SiteBrandingDialog({
     if (!site) return;
     setBrandName(site.brandName ?? site.name);
     setBrandLogoUrl(site.brandLogoUrl ?? "");
-    setBrandPrimaryColor(site.brandPrimaryColor ?? "#0d9488");
+    setBrandPrimaryColor(site.brandPrimaryColor ?? "#F78E1E");
     setPaymentProvider(site.paymentProvider ?? "SNIPPE");
     setRouterHost(site.routerHost ?? "");
   }, [site]);

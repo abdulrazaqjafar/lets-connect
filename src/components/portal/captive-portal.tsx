@@ -44,7 +44,7 @@ export function CaptivePortal({ initialQuery }: CaptivePortalProps) {
   const [payOpen, setPayOpen] = useState(false);
   const [login, setLogin] = useState<MikroTikLoginPayload | null>(null);
 
-  const brandColor = "#14b8a6";
+  const brandColor = "#F78E1E";
 
   const loadPackages = useCallback(async () => {
     setLoading(true);
@@ -90,8 +90,8 @@ export function CaptivePortal({ initialQuery }: CaptivePortalProps) {
 
       <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-7 sm:px-5">
         <header className="mb-6 text-center text-white">
-          <div className="mx-auto mb-4 inline-flex rounded-2xl bg-white/95 px-4 py-2.5 shadow-lg">
-            <BrandLogo />
+          <div className="mx-auto mb-4 flex justify-center">
+            <BrandLogo size="lg" />
           </div>
           <p className="text-[11px] font-semibold tracking-[0.22em] text-white/55 uppercase">
             Internet access

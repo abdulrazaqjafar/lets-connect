@@ -234,9 +234,10 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
     }
   }
 
-  const brandColor = site?.brandPrimaryColor || "#14b8a6";
+  const brandColor = site?.brandPrimaryColor || "#F78E1E";
   const displayName = site?.brandName || site?.name || "Wi‑Fi";
   const selectedPkg = packages.find((p) => p.id === selectedPackageId);
+  const hasCustomLogo = Boolean(site?.brandLogoUrl);
 
   return (
     <div
@@ -281,17 +282,15 @@ export function SitePortal({ siteId, queryString }: SitePortalProps) {
       <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-7 sm:px-5">
         <header className="portal-rise mb-6 text-center text-white">
           <div className="mx-auto mb-4 flex justify-center">
-            {site?.brandLogoUrl ? (
+            {hasCustomLogo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={site.brandLogoUrl}
+                src={site!.brandLogoUrl!}
                 alt={displayName}
-                className="h-12 w-auto max-w-[200px] object-contain drop-shadow-lg"
+                className="h-14 w-auto max-w-[220px] object-contain drop-shadow-lg"
               />
             ) : (
-              <div className="rounded-2xl bg-white/95 px-4 py-2.5 shadow-lg">
-                <BrandLogo />
-              </div>
+              <BrandLogo size="lg" />
             )}
           </div>
           <p className="text-[11px] font-semibold tracking-[0.22em] text-white/55 uppercase">

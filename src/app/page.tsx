@@ -134,7 +134,7 @@ export default function Home() {
               Tanzania hotspot OS
             </p>
             <h1 className="mt-3 font-heading text-4xl font-semibold tracking-[-0.04em] sm:text-5xl lg:text-6xl">
-              Lets<span className="text-teal-300">Connect</span>
+              Lets<span className="text-[#F78E1E]">Connect</span>
             </h1>
             <p className="mt-4 max-w-lg text-base text-slate-200 sm:text-lg">
               MikroTik automation, local mobile money, vouchers, live network ops,
