@@ -1,26 +1,33 @@
 import { z } from "zod";
-import { jsonCreated, jsonError, handleRouteError } from "@/lib/api";
-import { createSession, hashPassword } from "@/lib/auth";
+import { jsonError, jsonOk, handleRouteError } from "@/lib/api";
+import { hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isPlatformPlanCode, type PlatformPlanCode } from "@/lib/plan-catalog";
-import { startSubscription } from "@/lib/subscriptions";
+import { isPlatformPlanCode } from "@/lib/plan-catalog";
+import { createAndSendOtp, normalizeTzPhone } from "@/lib/otp";
 
-const registerSchema = z.object({
+const registerStartSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().email().max(160),
-  phone: z.string().trim().min(9).max(20).optional(),
+  phone: z.string().trim().min(9).max(20),
   password: z.string().min(8).max(72),
   planCode: z.string().trim().default("ngorongoro"),
 });
 
+/**
+ * Step 1 — validate details + send OTP to phone (account created only after verify).
+ */
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const values = registerSchema.parse(body);
+    const values = registerStartSchema.parse(await request.json());
     const planCode = values.planCode.toLowerCase();
 
     if (!isPlatformPlanCode(planCode)) {
       return jsonError("Invalid subscription plan", 400);
+    }
+
+    const phone = normalizeTzPhone(values.phone);
+    if (!phone) {
+      return jsonError("Enter a valid Tanzania phone (07XXXXXXXX)", 400);
     }
 
     const email = values.email.toLowerCase();
@@ -30,37 +37,31 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await hashPassword(values.password);
-    const user = await prisma.user.create({
-      data: {
-        email,
+
+    const otp = await createAndSendOtp({
+      purpose: "REGISTER",
+      destination: phone,
+      channel: "SMS",
+      payload: {
         name: values.name,
-        phone: values.phone?.trim() || null,
+        email,
+        phone,
         passwordHash,
-        role: "SITE_OWNER",
+        planCode,
       },
-      select: { id: true, email: true, name: true },
     });
 
-    const subscription = await startSubscription(
-      user.id,
-      planCode as PlatformPlanCode,
-      { status: "TRIALING", days: 14 },
-    );
-
-    await createSession(user.id);
-
-    return jsonCreated({
-      user,
-      subscription: {
-        status: subscription.status,
-        endsAt: subscription.endsAt,
-        plan: {
-          code: subscription.plan.code,
-          name: subscription.plan.name,
-          maxSites: subscription.plan.maxSites,
-          priceAmount: subscription.plan.priceAmount,
-        },
-      },
+    return jsonOk({
+      requiresOtp: true,
+      challengeId: otp.challengeId,
+      expiresAt: otp.expiresAt,
+      destinationMasked: otp.destinationMasked,
+      channel: otp.channel,
+      demo: otp.demo,
+      debugOtp: otp.debugOtp,
+      message: otp.demo
+        ? "Demo OTP (no SMS key) — use the code shown"
+        : "OTP sent to your phone",
     });
   } catch (error) {
     return handleRouteError(error);

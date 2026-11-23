@@ -9,7 +9,11 @@ export const loginFormSchema = z.object({
 export const registerFormSchema = z.object({
   name: z.string().trim().min(2, "Name is required"),
   email: z.string().trim().email("Enter a valid email"),
-  phone: z.string().trim().optional(),
+  phone: z
+    .string()
+    .trim()
+    .min(9, "Phone is required for OTP verification")
+    .max(20),
   password: z.string().min(8, "Password must be at least 8 characters"),
   planCode: z
     .string()

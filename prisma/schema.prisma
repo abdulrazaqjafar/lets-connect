@@ -126,6 +126,11 @@ enum SubscriptionStatus {
   EXPIRED
 }
 
+enum OtpPurpose {
+  REGISTER
+  LOGIN
+}
+
 /// SaaS platform admin, WiFi site owner, or cashier under an owner
 model User {
   id           String   @id @default(cuid())
@@ -150,10 +155,34 @@ model User {
   supportTickets     SupportTicket[]       @relation("TicketOwner")
   ticketMessages     TicketMessage[]
   notifications      Notification[]
+  otpChallenges      OtpChallenge[]
 
   @@index([role])
   @@index([ownerId])
   @@map("users")
+}
+
+/// SMS / email one-time codes for register & login
+model OtpChallenge {
+  id         String     @id @default(cuid())
+  purpose    OtpPurpose
+  /// Destination phone (255…) or email
+  destination String
+  channel    NotificationChannel @default(SMS)
+  codeHash   String
+  /// Pending register payload or login userId
+  payload    Json?
+  userId     String?
+  attempts   Int        @default(0)
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime   @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([destination, purpose])
+  @@index([expiresAt])
+  @@map("otp_challenges")
 }
 
 /// Platform subscription tiers for site owners (Ngorongoro → Kilimanjaro)
