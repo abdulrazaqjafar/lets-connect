@@ -29,7 +29,15 @@ function formatDuration(sec: number | null) {
   return `${m}m`;
 }
 
-export function NetworkOpsPanel() {
+type NetworkOpsPanelProps = {
+  title?: string;
+  description?: string;
+};
+
+export function NetworkOpsPanel({
+  title = "Live network",
+  description = "Sessions, bandwidth, router health, and today’s collections.",
+}: NetworkOpsPanelProps) {
   const [data, setData] = useState<NetworkOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -58,9 +66,9 @@ export function NetworkOpsPanel() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Operations"
-        title="Live network"
-        description="Sessions, bandwidth, router health, and today’s collections."
+        eyebrow="Network"
+        title={title}
+        description={description}
         actions={
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />

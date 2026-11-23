@@ -41,6 +41,14 @@ export type MikrotikScriptOptions = {
   apiUsername?: string;
   /** API password (defaults to RADIUS secret) */
   apiPassword?: string;
+  /** RouterOS major version (affects comments / device-mode note) */
+  routerOsVersion?: 6 | 7;
+  /** Enable Hotspot AAA + captive portal (default true) */
+  enableHotspot?: boolean;
+  /** Placeholder PPPoE RADIUS profile stubs */
+  enablePppoe?: boolean;
+  /** Static IP pool note / future */
+  enableStaticIp?: boolean;
 };
 
 const DEFAULT_WALLED_GARDEN_HOSTS = [
@@ -142,6 +150,10 @@ export function generateMikrotikScript(
   const enableApi = options.enableApiUser !== false;
   const apiUser = options.apiUsername ?? "letsconnect";
   const apiPass = options.apiPassword ?? site.secretKey;
+  const rosVersion = options.routerOsVersion ?? 7;
+  const enableHotspot = options.enableHotspot !== false;
+  const enablePppoe = options.enablePppoe === true;
+  const enableStaticIp = options.enableStaticIp === true;
 
   const profileName = "hsprof-letsconnect";
   const serverName = "hotspot-letsconnect";
@@ -159,12 +171,14 @@ export function generateMikrotikScript(
   const cmd = (line: string) => lines.push(line);
 
   push("# ============================================================");
-  push("# Lets Connect — One-command RouterOS v7 onboarding");
-  push("# Hotspot + RADIUS + API user + optional WireGuard");
+  push(`# Lets Connect — RouterOS ${rosVersion} onboarding`);
+  push(
+    `# Services: Hotspot=${enableHotspot ? "yes" : "no"} PPPoE=${enablePppoe ? "yes" : "no"} Static=${enableStaticIp ? "yes" : "no"}`,
+  );
+  push("# RADIUS + voucher portal redirect + optional WireGuard/API");
   push(`# Site: ${site.name}`);
   push(`# NAS-Identifier: ${site.nasIdentifier}`);
   push(`# Generated: ${new Date().toISOString()}`);
-  push("# Paste into Winbox > New Terminal (or Files > Import .rsc)");
   push("# ============================================================");
   push();
 
@@ -174,7 +188,22 @@ export function generateMikrotikScript(
     push();
   }
 
+  if (rosVersion >= 7) {
+    push("# If RouterOS 7 blocks Hotspot/PPP with device-mode, run once (physically confirm):");
+    push("# /system/device-mode/update mode=advanced");
+    push();
+  }
+
   cmd(':put "Lets Connect: starting provisioning..."');
+  push();
+
+  push("# --- 0) NTP time sync (required for vouchers / TLS / accounting) ---");
+  cmd(
+    ':if ([/system ntp client get status]!="synchronized") do={ /system ntp client set enabled=yes servers=time.cloudflare.com }',
+  );
+  cmd(
+    ":for i from=1 to=20 do={ :if ([/system ntp client get status]=\"synchronized\") do={ :put \"NTP OK\" } else={ :delay 1s } }",
+  );
   push();
 
   push("# --- 1) System identity (sent as NAS-Identifier) ---");
@@ -379,6 +408,43 @@ export function generateMikrotikScript(
     `# /tool fetch url="${loginHtmlUrl}" dst-path=hotspot/login.html keep-result=yes`,
   );
   push();
+
+  if (enablePppoe) {
+    push("# --- 12a) PPPoE RADIUS (optional service) ---");
+    cmd(
+      `:do { /radius remove [find where comment~"${escapeRos(`${comment} pppoe`)}"] } on-error={}`,
+    );
+    cmd(
+      [
+        "/radius add",
+        `address=${escapeRos(cloudIp)}`,
+        `secret="${escapeRos(site.secretKey)}"`,
+        "service=ppp",
+        `authentication-port=${authPort}`,
+        `accounting-port=${acctPort}`,
+        "timeout=3s",
+        `comment="${escapeRos(`${comment} pppoe`)}"`,
+      ].join(" "),
+    );
+    cmd(
+      `:do { /ppp profile set default use-radius=yes } on-error={ :put "Set PPPoE profile use-radius=yes manually" }`,
+    );
+    push("# Create PPPoE server on your WAN/LAN as needed: /interface pppoe-server server add ...");
+    push();
+  }
+
+  if (enableStaticIp) {
+    push("# --- Static IP service ---");
+    push("# Reserve addresses in your DHCP or use /ip arp for static clients.");
+    push(`# Document static clients in Lets Connect for site ${site.name}.`);
+    push();
+  }
+
+  if (!enableHotspot) {
+    push("# Hotspot sections above still apply RADIUS NAS identity; disable hotspot server if unused:");
+    push(`# /ip hotspot disable [find where name="${serverName}"]`);
+    push();
+  }
 
   push("# --- 12) RouterOS API access (Lets Connect cloud) ---");
   if (enableApi) {

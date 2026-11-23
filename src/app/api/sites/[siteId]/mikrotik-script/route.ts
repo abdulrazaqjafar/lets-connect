@@ -41,6 +41,10 @@ export async function GET(request: Request, context: RouteContext) {
     const lanInterface =
       searchParams.get("lanInterface")?.trim() || "bridge-hotspot";
     const wanInterface = searchParams.get("wanInterface")?.trim() || "ether1";
+    const ros = searchParams.get("ros") === "6" ? 6 : 7;
+    const enableHotspot = searchParams.get("hotspot") !== "0";
+    const enablePppoe = searchParams.get("pppoe") === "1";
+    const enableStaticIp = searchParams.get("static") === "1";
 
     const portalBase = (
       process.env.NEXT_PUBLIC_PORTAL_URL?.trim() ||
@@ -59,6 +63,10 @@ export async function GET(request: Request, context: RouteContext) {
         cloudRadiusIp: radiusHost || undefined,
         hotspotInterface: lanInterface,
         wanInterface,
+        routerOsVersion: ros,
+        enableHotspot,
+        enablePppoe,
+        enableStaticIp,
       },
     );
 

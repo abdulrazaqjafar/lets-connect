@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 type SiteOption = {
   id: string;
@@ -26,14 +27,22 @@ type SiteOption = {
 export default function RouterSetupPage() {
   const [sites, setSites] = useState<SiteOption[]>([]);
   const [siteId, setSiteId] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"one" | "full" | "device" | null>(null);
   const [loadingSites, setLoadingSites] = useState(true);
   const [loadingScript, setLoadingScript] = useState(false);
   const [script, setScript] = useState("");
+  const [oneLine, setOneLine] = useState("");
+  const [deviceModeCmd, setDeviceModeCmd] = useState<string | null>(null);
+  const [portalUrl, setPortalUrl] = useState("");
+  const [rscUrl, setRscUrl] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [radiusHost, setRadiusHost] = useState("18.199.177.29");
   const [lanInterface, setLanInterface] = useState("bridge-hotspot");
   const [wanInterface, setWanInterface] = useState("ether1");
+  const [rosVersion, setRosVersion] = useState<"6" | "7">("7");
+  const [hotspot, setHotspot] = useState(true);
+  const [pppoe, setPppoe] = useState(false);
+  const [staticIp, setStaticIp] = useState(false);
 
   const loadSites = useCallback(async () => {
     setLoadingSites(true);
@@ -52,61 +61,89 @@ export default function RouterSetupPage() {
     }
   }, []);
 
-  const loadScript = useCallback(async () => {
+  const loadInstall = useCallback(async () => {
     if (!siteId) {
       setScript("");
+      setOneLine("");
       setWarnings([]);
       return;
     }
     setLoadingScript(true);
     try {
-      const params = new URLSearchParams();
-      if (radiusHost.trim()) params.set("radiusHost", radiusHost.trim());
-      if (lanInterface.trim()) params.set("lanInterface", lanInterface.trim());
-      if (wanInterface.trim()) params.set("wanInterface", wanInterface.trim());
+      const params = new URLSearchParams({
+        radiusHost: radiusHost.trim(),
+        lanInterface: lanInterface.trim(),
+        wanInterface: wanInterface.trim(),
+        ros: rosVersion,
+        hotspot: hotspot ? "1" : "0",
+        pppoe: pppoe ? "1" : "0",
+        static: staticIp ? "1" : "0",
+      });
 
-      const response = await fetch(
-        `/api/sites/${siteId}/mikrotik-script?${params.toString()}`,
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast.error(payload.error ?? "Failed to generate script");
+      const [scriptRes, installRes] = await Promise.all([
+        fetch(`/api/sites/${siteId}/mikrotik-script?${params.toString()}`),
+        fetch(`/api/sites/${siteId}/install-command?${params.toString()}`),
+      ]);
+      const scriptPayload = await scriptRes.json().catch(() => ({}));
+      const installPayload = await installRes.json().catch(() => ({}));
+
+      if (!scriptRes.ok) {
+        toast.error(scriptPayload.error ?? "Failed to generate script");
         setScript("");
-        return;
+      } else {
+        setScript(scriptPayload.script ?? "");
+        setWarnings((scriptPayload.warnings ?? []) as string[]);
       }
-      setScript(payload.script ?? "");
-      setWarnings((payload.warnings ?? []) as string[]);
+
+      if (installRes.ok) {
+        setOneLine(installPayload.oneLineCommand ?? "");
+        setDeviceModeCmd(installPayload.deviceModeCommand ?? null);
+        setPortalUrl(installPayload.portalUrl ?? "");
+        setRscUrl(installPayload.rscUrl ?? "");
+      }
     } finally {
       setLoadingScript(false);
     }
-  }, [siteId, radiusHost, lanInterface, wanInterface]);
+  }, [
+    siteId,
+    radiusHost,
+    lanInterface,
+    wanInterface,
+    rosVersion,
+    hotspot,
+    pppoe,
+    staticIp,
+  ]);
 
   useEffect(() => {
     void loadSites();
   }, [loadSites]);
 
   useEffect(() => {
-    void loadScript();
-  }, [loadScript]);
+    void loadInstall();
+  }, [loadInstall]);
 
   const selected = sites.find((site) => site.id === siteId) ?? null;
 
-  async function copyCommands() {
-    if (!script) return;
+  async function copyText(
+    label: "one" | "full" | "device",
+    value: string,
+    okMessage: string,
+  ) {
+    if (!value) return;
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(script);
+        await navigator.clipboard.writeText(value);
       } else {
         throw new Error("clipboard unavailable");
       }
-      setCopied(true);
-      toast.success("Commands copied — paste into Winbox Terminal");
-      window.setTimeout(() => setCopied(false), 2000);
+      setCopied(label);
+      toast.success(okMessage);
+      window.setTimeout(() => setCopied(null), 2000);
     } catch {
-      // HTTP (non-secure) pages often block clipboard — fallback select
       try {
         const area = document.createElement("textarea");
-        area.value = script;
+        area.value = value;
         area.style.position = "fixed";
         area.style.left = "-9999px";
         document.body.appendChild(area);
@@ -115,13 +152,11 @@ export default function RouterSetupPage() {
         const ok = document.execCommand("copy");
         document.body.removeChild(area);
         if (!ok) throw new Error("execCommand failed");
-        setCopied(true);
-        toast.success("Commands copied — paste into Winbox Terminal");
-        window.setTimeout(() => setCopied(false), 2000);
+        setCopied(label);
+        toast.success(okMessage);
+        window.setTimeout(() => setCopied(null), 2000);
       } catch {
-        toast.error(
-          "Copy blocked on HTTP. Use Download .rsc instead, then import in Winbox.",
-        );
+        toast.error("Copy blocked — use Download .rsc instead");
       }
     }
   }
@@ -140,37 +175,29 @@ export default function RouterSetupPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Provisioning"
-        title="Router setup"
-        description={
-          <>
-            Hotspot + RADIUS + redirect to voucher portal at{" "}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-              http://18.199.177.29/portal/…
-            </code>
-          </>
-        }
+        eyebrow="Routers"
+        title="Add / configure router"
+        description="One-line Winbox install: NTP sync, fetch site .rsc, import — Hotspot portal redirect included."
       />
 
-      <div className="lc-panel space-y-4 rounded-2xl p-5">
+      <div className="lc-panel space-y-5 rounded-2xl p-5">
         <div className="flex items-start gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-teal-50 text-teal-700 ring-1 ring-teal-100">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-orange-50 text-[#F78E1E] ring-1 ring-orange-100">
             <Terminal className="size-4" />
           </div>
           <div>
             <h2 className="font-heading text-base font-semibold tracking-tight text-slate-900">
-              RouterOS script generator
+              MikroTik router
             </h2>
             <p className="text-sm text-slate-500">
-              Creates bridge, DHCP, NAT, RADIUS (PoD 3799), Hotspot profile, and
-              Walled Garden. Compatible with RouterOS 6.49+ / 7.x.
+              Pick site, services, and RouterOS version — then paste the install command.
             </p>
           </div>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="grid gap-1.5">
-            <Label>Site</Label>
+            <Label>Router / site</Label>
             <Select
               value={siteId}
               onValueChange={(value) => value && setSiteId(value)}
@@ -194,16 +221,73 @@ export default function RouterSetupPage() {
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="radiusHost">Cloud RADIUS IP / host</Label>
+            <Label>RouterOS version</Label>
+            <div className="flex gap-2">
+              {(["7", "6"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setRosVersion(v)}
+                  className={cn(
+                    "flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition",
+                    rosVersion === v
+                      ? "border-[#00338D] bg-[#00338D] text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <Label className="mb-2 block">Services</Label>
+          <div className="flex flex-wrap gap-3">
+            {(
+              [
+                { key: "hotspot", label: "Hotspot", value: hotspot, set: setHotspot },
+                { key: "pppoe", label: "PPPoE", value: pppoe, set: setPppoe },
+                {
+                  key: "static",
+                  label: "Static IP",
+                  value: staticIp,
+                  set: setStaticIp,
+                },
+              ] as const
+            ).map((svc) => (
+              <label
+                key={svc.key}
+                className={cn(
+                  "inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm",
+                  svc.value
+                    ? "border-orange-300 bg-orange-50 text-slate-900"
+                    : "border-slate-200 bg-white text-slate-600",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[#F78E1E]"
+                  checked={svc.value}
+                  onChange={(e) => svc.set(e.target.checked)}
+                />
+                {svc.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="radiusHost">Cloud RADIUS IP</Label>
             <Input
               id="radiusHost"
               className="bg-white"
-              placeholder="18.199.177.29"
               value={radiusHost}
               onChange={(e) => setRadiusHost(e.target.value)}
             />
           </div>
-
           <div className="grid gap-1.5">
             <Label htmlFor="lanInterface">Hotspot LAN / bridge</Label>
             <Input
@@ -211,55 +295,91 @@ export default function RouterSetupPage() {
               className="bg-white"
               value={lanInterface}
               onChange={(e) => setLanInterface(e.target.value)}
-              placeholder="bridge-hotspot"
             />
           </div>
-
           <div className="grid gap-1.5">
-            <Label htmlFor="wanInterface">WAN interface (NAT)</Label>
+            <Label htmlFor="wanInterface">WAN (NAT)</Label>
             <Input
               id="wanInterface"
               className="bg-white"
               value={wanInterface}
               onChange={(e) => setWanInterface(e.target.value)}
-              placeholder="ether1"
             />
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            className="bg-teal-700 text-white hover:bg-teal-800"
-            disabled={!script || loadingScript}
-            onClick={() => void copyCommands()}
-          >
-            {copied ? (
-              <>
-                <Check className="size-4" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="size-4" />
-                Copy Terminal Commands
-              </>
-            )}
-          </Button>
-          <Button variant="outline" disabled={!script} onClick={downloadScript}>
-            <Download className="size-4" />
-            Download .rsc
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!siteId || loadingScript}
-            onClick={() => void loadScript()}
-          >
-            {loadingScript ? "Generating…" : "Refresh script"}
-          </Button>
+        {deviceModeCmd ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <p className="font-semibold">Advisory</p>
+            <p className="mt-1 text-amber-900/80">
+              If RouterOS 7 blocks setup with a device-mode message, run this first:
+            </p>
+            <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950 px-3 py-2 font-mono text-[11px] text-amber-100">
+              {deviceModeCmd}
+            </pre>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() =>
+                void copyText("device", deviceModeCmd, "Device-mode command copied")
+              }
+            >
+              {copied === "device" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              Copy
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+          <p className="text-sm font-semibold text-slate-900">
+            Run in Winbox → New Terminal
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Syncs time, downloads this site&apos;s .rsc from Lets Connect, imports it
+            (includes voucher portal redirect).
+          </p>
+          <pre className="mt-3 max-h-28 overflow-auto rounded-lg bg-slate-950 px-3 py-2 font-mono text-[10px] leading-relaxed break-all whitespace-pre-wrap text-teal-100">
+            {loadingScript ? "Generating…" : oneLine || "Select a site…"}
+          </pre>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              className="bg-[#00338D] text-white hover:bg-[#00266b]"
+              disabled={!oneLine}
+              onClick={() =>
+                void copyText("one", oneLine, "Install command copied — paste in Terminal")
+              }
+            >
+              {copied === "one" ? <Check className="size-4" /> : <Copy className="size-4" />}
+              Copy install command
+            </Button>
+            <Button variant="outline" disabled={!script} onClick={downloadScript}>
+              <Download className="size-4" />
+              Download .rsc
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!siteId || loadingScript}
+              onClick={() => void loadInstall()}
+            >
+              Refresh
+            </Button>
+          </div>
+          {portalUrl ? (
+            <p className="mt-3 text-xs text-slate-500">
+              Phone Sign-in opens{" "}
+              <code className="rounded bg-white px-1 py-0.5 text-[11px]">{portalUrl}</code>
+            </p>
+          ) : null}
+          {rscUrl ? (
+            <p className="mt-1 truncate text-[10px] text-slate-400">
+              .rsc URL: {rscUrl}
+            </p>
+          ) : null}
         </div>
 
         {selected ? (
-          <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-700 sm:grid-cols-3">
+          <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700 sm:grid-cols-3">
             <p>
               <span className="font-medium text-slate-900">Site</span>
               <br />
@@ -276,13 +396,7 @@ export default function RouterSetupPage() {
               <code className="break-all text-xs">{selected.radiusSecret}</code>
             </p>
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {loadingSites
-              ? "Loading your sites…"
-              : "No sites found. Create one under Sites first."}
-          </p>
-        )}
+        ) : null}
 
         {warnings.length > 0 ? (
           <ul className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -292,35 +406,18 @@ export default function RouterSetupPage() {
           </ul>
         ) : null}
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          <p className="font-medium text-slate-900">How to apply in Winbox</p>
-          <ol className="mt-1 list-decimal space-y-1 pl-5">
-            <li>Keep Cloud RADIUS IP as <code>18.199.177.29</code>.</li>
-            <li>
-              Prefer <strong>Download .rsc</strong> on HTTP (Copy may be blocked by the
-              browser), then Winbox → Files → Upload → Import.
-            </li>
-            <li>Or Copy → Winbox → New Terminal → paste.</li>
-            <li>
-              Phone “Sign in to network” must open the <strong>voucher portal</strong>,
-              not stay on <code>wifi.local</code> login form.
-            </li>
-          </ol>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-700">Full script preview</p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!script}
+            onClick={() => void copyText("full", script, "Full script copied")}
+          >
+            {copied === "full" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            Copy full script
+          </Button>
         </div>
-
-        {selected ? (
-          <div className="rounded-xl border border-teal-200 bg-teal-50/80 px-4 py-3 text-sm text-teal-950">
-            <p className="font-medium">If phone still opens wifi.local</p>
-            <p className="mt-1 text-teal-900/80">
-              Paste this in Winbox Terminal to refresh the redirect for{" "}
-              <strong>{selected.name}</strong>:
-            </p>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950 px-3 py-2 font-mono text-[11px] leading-relaxed text-teal-100">
-              {`/tool fetch url="http://18.199.177.29/api/hotspot/${selected.id}/login.html" dst-path=hotspot/login.html keep-result=yes
-/tool fetch url="http://18.199.177.29/api/hotspot/${selected.id}/login.html" dst-path=hotspot/rlogin.html keep-result=yes`}
-            </pre>
-          </div>
-        ) : null}
 
         <ScriptTerminal
           script={script}

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
+  Cable,
   CreditCard,
   Headphones,
   LayoutDashboard,
@@ -24,20 +26,50 @@ type NavLink = {
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
-  ownerOnly?: boolean;
   cashierOk?: boolean;
 };
 
-const links: NavLink[] = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true, ownerOnly: true },
-  { href: "/dashboard/network", label: "Live network", icon: Network, ownerOnly: true },
-  { href: "/dashboard/sites", label: "Sites", icon: MapPinned, ownerOnly: true },
-  { href: "/dashboard/packages", label: "Packages", icon: Package, ownerOnly: true },
-  { href: "/dashboard/vouchers", label: "Vouchers", icon: Ticket, cashierOk: true },
-  { href: "/dashboard/staff", label: "Staff", icon: Users, ownerOnly: true },
-  { href: "/dashboard/router-setup", label: "Router setup", icon: Router, ownerOnly: true },
-  { href: "/dashboard/support", label: "Support", icon: Headphones, ownerOnly: true },
-  { href: "/dashboard/billing", label: "Subscriptions", icon: CreditCard, ownerOnly: true },
+type NavSection = {
+  title: string;
+  links: NavLink[];
+};
+
+const sections: NavSection[] = [
+  {
+    title: "Overview",
+    links: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
+    ],
+  },
+  {
+    title: "Hotspot",
+    links: [
+      { href: "/dashboard/packages", label: "Packages", icon: Package },
+      { href: "/dashboard/vouchers", label: "Vouchers", icon: Ticket, cashierOk: true },
+      { href: "/dashboard/staff", label: "Agents / Staff", icon: Users },
+      {
+        href: "/dashboard/online-users",
+        label: "Online users",
+        icon: Activity,
+      },
+    ],
+  },
+  {
+    title: "Network",
+    links: [
+      { href: "/dashboard/sites", label: "Sites / Routers", icon: MapPinned },
+      { href: "/dashboard/router-setup", label: "Router assistant", icon: Router },
+      { href: "/dashboard/network", label: "Network map", icon: Network },
+      { href: "/dashboard/pppoe", label: "PPPoE", icon: Cable },
+    ],
+  },
+  {
+    title: "Account",
+    links: [
+      { href: "/dashboard/support", label: "Tickets", icon: Headphones },
+      { href: "/dashboard/billing", label: "Subscription", icon: CreditCard },
+    ],
+  },
 ];
 
 export function DashboardSidebar() {
@@ -76,71 +108,119 @@ export function DashboardSidebar() {
   }
 
   const isCashier = role === "CASHIER";
-  const visible = links.filter((link) => {
-    if (isCashier) return link.cashierOk;
-    if (locked) return link.href === "/dashboard/billing";
-    return true;
-  });
 
   return (
     <aside className="print:hidden lc-sidebar flex w-full flex-col md:fixed md:inset-y-0 md:w-[17.5rem]">
       <div className="border-b border-white/8 px-5 py-5">
-        <BrandLogo inverted />
+        <BrandLogo inverted size="sm" />
       </div>
 
-      <div className="px-3 pt-4 md:flex-1">
-        <p className="mb-2 px-3 text-[10px] font-semibold tracking-[0.18em] text-slate-500 uppercase">
-          {isCashier ? "Cash desk" : locked ? "Billing only" : "Workspace"}
-        </p>
+      <div className="px-3 pt-4 md:flex-1 md:overflow-y-auto">
+        {isCashier || locked ? (
+          <p className="mb-2 px-3 text-[10px] font-semibold tracking-[0.18em] text-slate-500 uppercase">
+            {isCashier ? "Cash desk" : "Billing only"}
+          </p>
+        ) : null}
+
         <nav className="flex gap-1 overflow-x-auto pb-3 md:flex-col md:overflow-visible md:pb-0">
-          {visible.map((link) => {
-            const Icon = link.icon;
-            const active = link.exact
-              ? pathname === link.href
-              : pathname === link.href || pathname.startsWith(`${link.href}/`);
+          {sections.map((section) => {
+            const links = section.links.filter((link) => {
+              if (isCashier) return link.cashierOk;
+              if (locked) return link.href === "/dashboard/billing";
+              return true;
+            });
+            if (links.length === 0) return null;
 
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "group relative inline-flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-all duration-200",
-                  active
-                    ? "bg-white/8 font-medium text-white shadow-[inset_0_0_0_1px_rgba(45,212,191,0.22)]"
-                    : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
-                )}
-              >
-                {active ? (
-                  <span className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-teal-400" />
+              <div key={section.title} className="mb-3 hidden md:block">
+                {!isCashier && !locked ? (
+                  <p className="mb-1.5 px-3 text-[10px] font-semibold tracking-[0.16em] text-slate-500 uppercase">
+                    {section.title}
+                  </p>
                 ) : null}
-                <span
-                  className={cn(
-                    "flex size-7 items-center justify-center rounded-lg transition",
-                    active
-                      ? "bg-teal-400/15 text-teal-300"
-                      : "bg-white/4 text-slate-500 group-hover:text-slate-300",
-                  )}
-                >
-                  <Icon className="size-3.5" />
-                </span>
-                {link.label}
-              </Link>
+                <div className="flex flex-col gap-0.5">
+                  {links.map((link) => {
+                    const Icon = link.icon;
+                    const active = link.exact
+                      ? pathname === link.href
+                      : pathname === link.href || pathname.startsWith(`${link.href}/`);
+
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className={cn(
+                          "group relative inline-flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-all duration-200",
+                          active
+                            ? "bg-white/8 font-medium text-white shadow-[inset_0_0_0_1px_rgba(247,142,30,0.35)]"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
+                        )}
+                      >
+                        {active ? (
+                          <span className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[#F78E1E]" />
+                        ) : null}
+                        <span
+                          className={cn(
+                            "flex size-7 items-center justify-center rounded-lg transition",
+                            active
+                              ? "bg-orange-400/15 text-[#F78E1E]"
+                              : "bg-white/4 text-slate-500 group-hover:text-slate-300",
+                          )}
+                        >
+                          <Icon className="size-3.5" />
+                        </span>
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
+
+          {/* Mobile: flat list */}
+          <div className="flex gap-1 md:hidden">
+            {sections
+              .flatMap((s) => s.links)
+              .filter((link) => {
+                if (isCashier) return link.cashierOk;
+                if (locked) return link.href === "/dashboard/billing";
+                return true;
+              })
+              .map((link) => {
+                const Icon = link.icon;
+                const active = link.exact
+                  ? pathname === link.href
+                  : pathname === link.href || pathname.startsWith(`${link.href}/`);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs",
+                      active ? "bg-white/10 text-white" : "text-slate-400",
+                    )}
+                  >
+                    <Icon className="size-3.5" />
+                    {link.label}
+                  </Link>
+                );
+              })}
+          </div>
         </nav>
       </div>
 
       <div className="mt-auto hidden space-y-3 border-t border-white/8 p-4 md:block">
-        <div className="rounded-2xl bg-gradient-to-br from-teal-500/15 via-transparent to-transparent p-3 ring-1 ring-teal-400/20">
-          <p className="text-xs font-semibold text-teal-200">
-            {isCashier ? "Cashier access" : locked ? "Renew to unlock" : "Account protected"}
+        <div className="rounded-2xl bg-gradient-to-br from-orange-500/15 via-transparent to-transparent p-3 ring-1 ring-orange-400/20">
+          <p className="text-xs font-semibold text-orange-100">
+            {isCashier ? "Cashier access" : locked ? "Renew to unlock" : "Lets Connect"}
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
             {isCashier
               ? "Create and print cash vouchers for your assigned sites."
               : locked
                 ? "Sites and Wi‑Fi portal are paused until you pay."
-                : "Sign-in required. Site limits follow your subscription plan."}
+                : "Hotspot, vouchers, and MikroTik one-line install."}
           </p>
         </div>
         <button
