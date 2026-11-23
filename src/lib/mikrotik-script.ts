@@ -325,12 +325,34 @@ export function generateMikrotikScript(
   );
   push();
 
-  push("# --- 11) Captive login → voucher portal (SaaS) ---");
-  cmd(`:do { /ip hotspot reset-html hotspot } on-error={}`);
+  push("# --- 11) Captive login → site voucher portal (NOT wifi.local form) ---");
+  push("# Phone \"Sign in to network\" opens http://wifi.local/login");
+  push("# This login.html immediately redirects to the cloud portal for THIS site.");
   cmd(
-    `/tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/login.html keep-result=yes`,
+    `:do { /ip dns static remove [find where name="wifi.local" and comment~"${escapeRos(comment)}"] } on-error={}`,
   );
-  push(`# Portal URL: ${portalBase}/portal/${site.id}`);
+  cmd(
+    `/ip dns static add name=wifi.local address=${escapeRos(gwIp)} comment="${escapeRos(comment)}"`,
+  );
+  cmd(`:do { /ip hotspot reset-html hotspot } on-error={}`);
+  // Fetch twice — first attempt can fail if DNS/WAN not ready yet
+  cmd(
+    `:do { /tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/login.html keep-result=yes } on-error={ :put "WARN: login.html fetch failed — retrying..." }`,
+  );
+  cmd(
+    `:delay 2s; /tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/login.html keep-result=yes`,
+  );
+  // Same redirect for rlogin (some phones hit this path)
+  cmd(
+    `:do { /tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/rlogin.html keep-result=yes } on-error={}`,
+  );
+  cmd(
+    `:put ("login.html size: " . [/file get [/file find name="hotspot/login.html"] size])`,
+  );
+  push(`# Portal for this site: ${portalBase}/portal/${site.id}`);
+  push(
+    `# Re-fetch later: /tool fetch url="${loginHtmlUrl}" dst-path=hotspot/login.html keep-result=yes`,
+  );
   push();
 
   push("# --- 12) RouterOS API access (Lets Connect cloud) ---");

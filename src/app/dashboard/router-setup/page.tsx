@@ -302,11 +302,25 @@ export default function RouterSetupPage() {
             </li>
             <li>Or Copy → Winbox → New Terminal → paste.</li>
             <li>
-              Phone connects to SSID <code>LetsConnect</code> → browser opens voucher
-              portal automatically.
+              Phone “Sign in to network” must open the <strong>voucher portal</strong>,
+              not stay on <code>wifi.local</code> login form.
             </li>
           </ol>
         </div>
+
+        {selected ? (
+          <div className="rounded-xl border border-teal-200 bg-teal-50/80 px-4 py-3 text-sm text-teal-950">
+            <p className="font-medium">If phone still opens wifi.local</p>
+            <p className="mt-1 text-teal-900/80">
+              Paste this in Winbox Terminal to refresh the redirect for{" "}
+              <strong>{selected.name}</strong>:
+            </p>
+            <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950 px-3 py-2 font-mono text-[11px] leading-relaxed text-teal-100">
+              {`/tool fetch url="http://18.199.177.29/api/hotspot/${selected.id}/login.html" dst-path=hotspot/login.html keep-result=yes
+/tool fetch url="http://18.199.177.29/api/hotspot/${selected.id}/login.html" dst-path=hotspot/rlogin.html keep-result=yes`}
+            </pre>
+          </div>
+        ) : null}
 
         <ScriptTerminal
           script={script}
