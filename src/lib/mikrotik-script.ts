@@ -4,6 +4,7 @@
  */
 
 export type MikrotikScriptSiteInput = {
+  id: string;
   name: string;
   nasIdentifier: string;
   secretKey: string;
@@ -76,12 +77,21 @@ export function generateMikrotikScript(
   options: MikrotikScriptOptions = {},
 ): string {
   const cloudIp = resolveCloudIp(options.cloudRadiusIp);
-  const dnsName =
-    options.hotspotDnsName ??
-    process.env.PORTAL_DOMAIN?.trim() ??
-    process.env.NEXT_PUBLIC_APP_HOST?.trim() ??
-    "tech-spherewifi.xyz";
-  const portalIp = DEFAULT_PORTAL_IP;
+  const portalBase = (
+    process.env.NEXT_PUBLIC_PORTAL_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    `http://${DEFAULT_PORTAL_IP}`
+  ).replace(/\/$/, "");
+  const portalIp = (() => {
+    try {
+      return new URL(portalBase).hostname;
+    } catch {
+      return DEFAULT_PORTAL_IP;
+    }
+  })();
+  // Local hotspot DNS name (captive detection); voucher UI is via login.html redirect
+  const dnsName = options.hotspotDnsName ?? "wifi.local";
+  const loginHtmlUrl = `${portalBase}/api/hotspot/${site.id}/login.html`;
   const iface = options.hotspotInterface ?? "bridge-hotspot";
   const wan = options.wanInterface ?? "ether1";
   const hotspotAddress = options.hotspotAddress ?? "10.5.50.1/24";
@@ -127,12 +137,21 @@ export function generateMikrotikScript(
   cmd(`/system identity set name="${escapeRos(site.nasIdentifier)}"`);
   push();
 
-  push("# --- 2) Hotspot bridge (created if missing) ---");
+  push("# --- 2) Hotspot bridge + attach wlan1 (2.4 GHz) ---");
   cmd(
     `:if ([:len [/interface bridge find where name="${escapeRos(iface)}"]] = 0) do={ /interface bridge add name="${escapeRos(iface)}" comment="${escapeRos(comment)}" }`,
   );
+  cmd(
+    `:do { /interface bridge port remove [find where interface=wlan1] } on-error={}`,
+  );
+  cmd(
+    `:do { /interface bridge port add bridge="${escapeRos(iface)}" interface=wlan1 } on-error={}`,
+  );
+  cmd(
+    `:do { /interface wireless set wlan1 disabled=no ssid="LetsConnect" } on-error={}`,
+  );
   push(
-    `# Add your Wi-Fi / LAN ports to ${iface}, e.g.: /interface bridge port add bridge=${iface} interface=wlan1`,
+    `# Optional 5 GHz: /interface bridge port add bridge=${iface} interface=wlan2`,
   );
   push();
 
@@ -248,8 +267,14 @@ export function generateMikrotikScript(
       `/ip hotspot walled-garden add dst-host="${escapeRos(host)}" action=allow comment="${escapeRos(`${comment} wg`)}" disabled=no`,
     );
   }
+  // Allow SaaS host by name and by IP (HTTP portal before auth)
+  if (portalIp && portalIp !== "tech-spherewifi.xyz") {
+    cmd(
+      `/ip hotspot walled-garden add dst-host="${escapeRos(portalIp)}" action=allow comment="${escapeRos(`${comment} wg`)}" disabled=no`,
+    );
+  }
   cmd(
-    `/ip hotspot walled-garden ip add dst-address=${escapeRos(portalIp)} action=allow comment="${escapeRos(`${comment} portal-ip`)}"`,
+    `/ip hotspot walled-garden ip add dst-address=${escapeRos(DEFAULT_PORTAL_IP)} action=allow comment="${escapeRos(`${comment} portal-ip`)}"`,
   );
   cmd(
     `/ip hotspot walled-garden ip add dst-port=53 protocol=udp action=allow comment="${escapeRos(`${comment} dns`)}"`,
@@ -259,12 +284,23 @@ export function generateMikrotikScript(
   );
   push();
 
+  push("# --- 11) Captive login → voucher portal (SaaS) ---");
+  cmd(`:do { /ip hotspot reset-html hotspot } on-error={}`);
+  cmd(
+    `/tool fetch url="${escapeRos(loginHtmlUrl)}" dst-path=hotspot/login.html keep-result=yes`,
+  );
+  push(`# Portal URL: ${portalBase}/portal/${site.id}`);
+  push();
+
   push("# --- Done ---");
   cmd(
     `:put "Lets Connect ready. NAS=${escapeRos(site.nasIdentifier)} RADIUS=${escapeRos(cloudIp)}"`,
   );
   cmd(
-    `:put "Next: add WLAN/LAN ports to ${escapeRos(iface)}, then test a client."`,
+    `:put "Voucher portal: ${escapeRos(portalBase)}/portal/${escapeRos(site.id)}"`,
+  );
+  cmd(
+    `:put "Connect a phone to SSID LetsConnect — browser should open the portal."`,
   );
   push();
 

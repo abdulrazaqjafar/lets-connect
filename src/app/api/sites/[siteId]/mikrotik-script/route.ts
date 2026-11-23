@@ -42,8 +42,15 @@ export async function GET(request: Request, context: RouteContext) {
       searchParams.get("lanInterface")?.trim() || "bridge-hotspot";
     const wanInterface = searchParams.get("wanInterface")?.trim() || "ether1";
 
+    const portalBase = (
+      process.env.NEXT_PUBLIC_PORTAL_URL?.trim() ||
+      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+      "http://18.199.177.29"
+    ).replace(/\/$/, "");
+
     const script = generateMikrotikScript(
       {
+        id: site.id,
         name: site.name,
         nasIdentifier: site.nasIdentifier,
         secretKey: site.radiusSecret,
@@ -61,13 +68,15 @@ export async function GET(request: Request, context: RouteContext) {
       radiusHost: radiusHost || null,
       lanInterface,
       wanInterface,
+      portalUrl: `${portalBase}/portal/${site.id}`,
       script,
       warnings: [
         !radiusHost
-          ? "RADIUS host is empty — set Cloud RADIUS IP before applying."
+          ? "RADIUS host is empty — set Cloud RADIUS IP to 18.199.177.29 before applying."
           : null,
-        `Add WLAN/LAN ports to bridge "${lanInterface}" after import.`,
-        `Confirm WAN interface is "${wanInterface}" for NAT.`,
+        `Script attaches wlan1 to "${lanInterface}" and fetches voucher login.html from the cloud.`,
+        `Confirm WAN interface is "${wanInterface}" for NAT (change if you use pppoe-out1).`,
+        `After apply: phone on Wi‑Fi should open ${portalBase}/portal/${site.id}`,
       ].filter(Boolean),
     });
   } catch (error) {

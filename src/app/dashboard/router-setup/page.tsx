@@ -31,7 +31,7 @@ export default function RouterSetupPage() {
   const [loadingScript, setLoadingScript] = useState(false);
   const [script, setScript] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [radiusHost, setRadiusHost] = useState("");
+  const [radiusHost, setRadiusHost] = useState("18.199.177.29");
   const [lanInterface, setLanInterface] = useState("bridge-hotspot");
   const [wanInterface, setWanInterface] = useState("ether1");
 
@@ -94,12 +94,35 @@ export default function RouterSetupPage() {
   async function copyCommands() {
     if (!script) return;
     try {
-      await navigator.clipboard.writeText(script);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(script);
+      } else {
+        throw new Error("clipboard unavailable");
+      }
       setCopied(true);
       toast.success("Commands copied — paste into Winbox Terminal");
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Could not copy to clipboard");
+      // HTTP (non-secure) pages often block clipboard — fallback select
+      try {
+        const area = document.createElement("textarea");
+        area.value = script;
+        area.style.position = "fixed";
+        area.style.left = "-9999px";
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(area);
+        if (!ok) throw new Error("execCommand failed");
+        setCopied(true);
+        toast.success("Commands copied — paste into Winbox Terminal");
+        window.setTimeout(() => setCopied(false), 2000);
+      } catch {
+        toast.error(
+          "Copy blocked on HTTP. Use Download .rsc instead, then import in Winbox.",
+        );
+      }
     }
   }
 
@@ -121,9 +144,9 @@ export default function RouterSetupPage() {
         title="Router setup"
         description={
           <>
-            Generate Winbox-ready Hotspot + RADIUS commands. Portal DNS:{" "}
+            Hotspot + RADIUS + redirect to voucher portal at{" "}
             <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-              wifi.letsconnect.co.tz
+              http://18.199.177.29/portal/…
             </code>
           </>
         }
@@ -175,7 +198,7 @@ export default function RouterSetupPage() {
             <Input
               id="radiusHost"
               className="bg-white"
-              placeholder="e.g. 41.59.x.x or radius.yourdomain.com"
+              placeholder="18.199.177.29"
               value={radiusHost}
               onChange={(e) => setRadiusHost(e.target.value)}
             />
@@ -272,11 +295,15 @@ export default function RouterSetupPage() {
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
           <p className="font-medium text-slate-900">How to apply in Winbox</p>
           <ol className="mt-1 list-decimal space-y-1 pl-5">
-            <li>Set Cloud RADIUS IP (your FreeRADIUS public IP).</li>
-            <li>Copy commands (or download .rsc).</li>
-            <li>Winbox → New Terminal → paste, or Files → Upload .rsc → Import.</li>
+            <li>Keep Cloud RADIUS IP as <code>18.199.177.29</code>.</li>
             <li>
-              Add Wi‑Fi/LAN ports to <code>{lanInterface}</code> under Bridge → Ports.
+              Prefer <strong>Download .rsc</strong> on HTTP (Copy may be blocked by the
+              browser), then Winbox → Files → Upload → Import.
+            </li>
+            <li>Or Copy → Winbox → New Terminal → paste.</li>
+            <li>
+              Phone connects to SSID <code>LetsConnect</code> → browser opens voucher
+              portal automatically.
             </li>
           </ol>
         </div>
