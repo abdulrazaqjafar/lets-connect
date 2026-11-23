@@ -1,0 +1,24 @@
+-- Extra FreeRADIUS tables not mapped in Prisma (safe if already exist)
+CREATE TABLE IF NOT EXISTS radgroupcheck (
+  id SERIAL PRIMARY KEY,
+  groupname VARCHAR(64) NOT NULL DEFAULT '',
+  attribute VARCHAR(64) NOT NULL DEFAULT '',
+  op VARCHAR(2) NOT NULL DEFAULT '==',
+  value VARCHAR(253) NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS radgroupreply (
+  id SERIAL PRIMARY KEY,
+  groupname VARCHAR(64) NOT NULL DEFAULT '',
+  attribute VARCHAR(64) NOT NULL DEFAULT '',
+  op VARCHAR(2) NOT NULL DEFAULT '=',
+  value VARCHAR(253) NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS radpostauth (
+  id BIGSERIAL PRIMARY KEY,
+  username VARCHAR(64) NOT NULL DEFAULT '',
+  pass VARCHAR(64) NOT NULL DEFAULT '',
+  reply VARCHAR(32) NOT NULL DEFAULT '',
+  authdate TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);

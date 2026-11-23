@@ -1,0 +1,435 @@
+// Lets Connect — multi-tenant WiFi hotspot SaaS schema
+// Tenant boundary: User (site owner) → Site → Package / Voucher / Transaction
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SAAS_ADMIN
+  SITE_OWNER
+}
+
+enum SiteStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum VoucherStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  MPESA
+  TIGO_PESA
+  AIRTEL_MONEY
+  STRIPE
+  PAYSTACK
+  FLUTTERWAVE
+  MANUAL
+  OTHER
+}
+
+enum PortalSessionStatus {
+  AWAITING_PAYMENT
+  PAID
+  LOGGED_IN
+  EXPIRED
+  FAILED
+}
+
+enum ValidityUnit {
+  HOURS
+  DAYS
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+/// SaaS platform admin or WiFi site owner (tenant root)
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  role         UserRole @default(SITE_OWNER)
+  phone        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sites         Site[]
+  transactions  Transaction[]
+  subscriptions Subscription[]
+
+  @@index([role])
+  @@map("users")
+}
+
+/// Platform subscription tiers for site owners (Ngorongoro → Kilimanjaro)
+model SubscriptionPlan {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  description     String?
+  /// Monthly price in TZS
+  priceAmount     Int
+  priceCurrency   String   @default("TZS")
+  /// Max hotspot sites the owner may manage
+  maxSites        Int
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  highlighted     Boolean  @default(false)
+  features        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([isActive, sortOrder])
+  @@map("subscription_plans")
+}
+
+/// Owner's current / historical SaaS subscription
+model Subscription {
+  id        String             @id @default(cuid())
+  userId    String
+  planId    String
+  status    SubscriptionStatus @default(TRIALING)
+  /// Billing period
+  startsAt  DateTime           @default(now())
+  endsAt    DateTime?
+  canceledAt DateTime?
+  /// Optional mobile-money / invoice reference
+  externalRef String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+/// WiFi location / hotspot — primary tenant resource with NAS + router config
+model Site {
+  id            String     @id @default(cuid())
+  ownerId       String
+  name          String
+  slug          String
+  description   String?
+  /// Human-readable site location (city, street, venue)
+  location      String?
+  address       String?
+  timezone      String     @default("Africa/Dar_es_Salaam")
+  status        SiteStatus @default(ACTIVE)
+
+  /// RADIUS / hotspot NAS identifier (unique across the platform)
+  nasIdentifier String     @unique
+  /// RADIUS shared secret for this NAS / site
+  radiusSecret  String     @default("changeme")
+  /// MikroTik hardware model (e.g. hAP ax2, RB4011)
+  routerModel   String?
+
+  /// Router / NAS connection settings (MikroTik API, FreeRADIUS client, etc.)
+  routerHost     String?
+  routerPort     Int?      @default(8728)
+  routerUsername String?
+  /// Store encrypted at rest in application layer
+  routerPassword String?
+  routerApiSsl   Boolean   @default(false)
+  /// Extra vendor-specific router options (JSON)
+  routerConfig   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner          User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  packages       Package[]
+  vouchers       Voucher[]
+  transactions   Transaction[]
+  portalSessions PortalSession[]
+
+  @@unique([ownerId, slug])
+  @@index([ownerId])
+  @@index([status])
+  @@map("sites")
+}
+
+/// Sellable access plan: price, validity (hours/days), up/down speed caps
+model Package {
+  id          String  @id @default(cuid())
+  siteId      String
+  name        String
+  description String?
+
+  /// Price in major currency units (e.g. 1000 = 1000 TZS)
+  priceAmount   Int
+  priceCurrency String @default("TZS")
+
+  /// How long the hotspot session lasts after activation
+  validityValue Int
+  validityUnit  ValidityUnit @default(HOURS)
+
+  /// Speed limits in Kbps (null = unlimited)
+  downloadLimitKbps Int?
+  uploadLimitKbps   Int?
+  /// Download data cap in MB (null = unlimited)
+  dataLimitMb       Int?
+  /// Max concurrent devices for a voucher on this package
+  maxDevices        Int @default(1)
+
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  vouchers       Voucher[]
+  transactions   Transaction[]
+  portalSessions PortalSession[]
+
+  @@index([siteId, isActive])
+  @@map("packages")
+}
+
+/// Access code issued for a site/package — redeemable at the captive portal
+model Voucher {
+  id        String        @id @default(cuid())
+  siteId    String
+  packageId String
+  code      String
+  status    VoucherStatus @default(AVAILABLE)
+  /// Groups codes created together for cash-print batches
+  batchId   String?
+
+  /// When the physical voucher can no longer be redeemed
+  expiresAt   DateTime?
+  /// When the session started after first successful login
+  activatedAt DateTime?
+  /// When the active session / plan ends (activatedAt + package duration)
+  validUntil  DateTime?
+
+  /// Optional purchaser / end-user metadata
+  buyerPhone String?
+  buyerEmail String?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  package        Package         @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  transactions   Transaction[]
+  portalSessions PortalSession[]
+
+  @@unique([siteId, code])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([packageId])
+  @@index([batchId])
+  @@map("vouchers")
+}
+
+/// Payment provider webhook / checkout audit log
+model Transaction {
+  id     String            @id @default(cuid())
+  /// Tenant owner who receives the payment (denormalized for fast reporting)
+  userId String
+  siteId String
+  packageId String?
+  voucherId String?
+
+  provider   PaymentProvider
+  /// Idempotency key from the payment provider (checkout id, M-Pesa receipt, etc.)
+  externalId String
+  status     TransactionStatus @default(PENDING)
+
+  amount   Int
+  currency String @default("KES")
+
+  /// Raw webhook / callback payload for reconciliation
+  webhookPayload Json?
+  /// Provider event type or callback name
+  eventType      String?
+  failureReason  String?
+
+  paidAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site          Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  package       Package?       @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  voucher       Voucher?       @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  portalSession PortalSession?
+
+  @@unique([provider, externalId])
+  @@index([userId, createdAt])
+  @@index([siteId, createdAt])
+  @@index([status])
+  @@map("transactions")
+}
+
+/// Captive-portal checkout tied to a MikroTik client (MAC + link-login-only)
+model PortalSession {
+  id            String             @id @default(cuid())
+  siteId        String
+  packageId     String?
+  transactionId String?            @unique
+  voucherId     String?
+
+  mac           String
+  clientIp      String?
+  /// MikroTik hotspot login CGI — used for auto-login after payment
+  linkLoginOnly String
+  chapId        String?
+  chapChallenge String?
+  linkOrig      String?
+
+  phone    String?
+  provider PaymentProvider?
+  status   PortalSessionStatus @default(AWAITING_PAYMENT)
+
+  /// Credentials posted to link-login-only after payment
+  loginUsername String?
+  loginPassword String?
+
+  expiresAt DateTime
+  paidAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site        Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  package     Package?     @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  voucher     Voucher?     @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+
+  @@index([mac, status])
+  @@index([siteId, createdAt])
+  @@index([expiresAt])
+  @@map("portal_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// FreeRADIUS SQL dialect tables (shared PostgreSQL with Lets Connect)
+// FreeRADIUS raddb/mods-config/sql/main/postgresql/schema.sql compatible
+// ---------------------------------------------------------------------------
+
+/// Authentication checks (Cleartext-Password, Auth-Type, Calling-Station-Id, …)
+model RadCheck {
+  id        Int    @id @default(autoincrement())
+  username  String @default("") @db.VarChar(64)
+  attribute String @default("") @db.VarChar(64)
+  op        String @default("==") @db.VarChar(2)
+  value     String @default("") @db.VarChar(253)
+
+  @@index([username], map: "radcheck_username")
+  @@map("radcheck")
+}
+
+/// Authorization replies (Session-Timeout, Mikrotik-Rate-Limit, Idle-Timeout, …)
+model RadReply {
+  id        Int    @id @default(autoincrement())
+  username  String @default("") @db.VarChar(64)
+  attribute String @default("") @db.VarChar(64)
+  op        String @default("=") @db.VarChar(2)
+  value     String @default("") @db.VarChar(253)
+
+  @@index([username], map: "radreply_username")
+  @@map("radreply")
+}
+
+/// Optional group membership (unused by default; ready for tiered plans)
+model RadUserGroup {
+  id        Int    @id @default(autoincrement())
+  username  String @default("") @db.VarChar(64)
+  groupname String @default("") @db.VarChar(64)
+  priority  Int    @default(1)
+
+  @@index([username], map: "radusergroup_username")
+  @@map("radusergroup")
+}
+
+/// Accounting sessions written by FreeRADIUS; read by session supervisor
+model RadAcct {
+  radAcctId           BigInt    @id @default(autoincrement()) @map("radacctid")
+  acctSessionId       String    @default("") @map("acctsessionid") @db.VarChar(64)
+  acctUniqueId        String    @unique @default("") @map("acctuniqueid") @db.VarChar(32)
+  username            String    @default("") @db.VarChar(64)
+  realm               String?   @default("") @db.VarChar(64)
+  nasIpAddress        String    @map("nasipaddress") @db.VarChar(15)
+  nasPortId           String?   @map("nasportid") @db.VarChar(32)
+  nasPortType         String?   @map("nasporttype") @db.VarChar(32)
+  acctStartTime       DateTime? @map("acctstarttime")
+  acctUpdateTime      DateTime? @map("acctupdatetime")
+  acctStopTime        DateTime? @map("acctstoptime")
+  acctInterval        Int?      @map("acctinterval")
+  acctSessionTime     Int?      @map("acctsessiontime")
+  acctAuthentic       String?   @map("acctauthentic") @db.VarChar(32)
+  connectInfoStart    String?   @map("connectinfo_start") @db.VarChar(50)
+  connectInfoStop     String?   @map("connectinfo_stop") @db.VarChar(50)
+  acctInputOctets     BigInt?   @map("acctinputoctets")
+  acctOutputOctets    BigInt?   @map("acctoutputoctets")
+  calledStationId     String    @default("") @map("calledstationid") @db.VarChar(50)
+  callingStationId    String    @default("") @map("callingstationid") @db.VarChar(50)
+  acctTerminateCause  String    @default("") @map("acctterminatecause") @db.VarChar(32)
+  serviceType         String?   @map("servicetype") @db.VarChar(32)
+  framedProtocol      String?   @map("framedprotocol") @db.VarChar(32)
+  framedIpAddress     String    @default("") @map("framedipaddress") @db.VarChar(15)
+  framedIpv6Address   String?   @map("framedipv6address") @db.VarChar(45)
+  framedIpv6Prefix    String?   @map("framedipv6prefix") @db.VarChar(45)
+  framedInterfaceId   String?   @map("framedinterfaceid") @db.VarChar(44)
+  delegatedIpv6Prefix String?   @map("delegatedipv6prefix") @db.VarChar(45)
+  class               String?   @db.VarChar(64)
+
+  @@index([username], map: "radacct_username")
+  @@index([acctSessionId], map: "radacct_acctsessionid")
+  @@index([acctStartTime], map: "radacct_acctstarttime")
+  @@index([acctStopTime], map: "radacct_acctstoptime")
+  @@index([nasIpAddress], map: "radacct_nasipaddress")
+  @@index([callingStationId], map: "radacct_callingstationid")
+  @@map("radacct")
+}
+
+/// FreeRADIUS NAS clients table — map Lets Connect sites / MikroTik routers
+model Nas {
+  id          Int     @id @default(autoincrement())
+  nasname     String  @db.VarChar(128)
+  shortname   String? @db.VarChar(32)
+  type        String? @default("other") @db.VarChar(30)
+  ports       Int?
+  secret      String  @default("secret") @db.VarChar(60)
+  server      String? @db.VarChar(64)
+  community   String? @db.VarChar(50)
+  description String? @db.VarChar(200)
+
+  @@index([nasname], map: "nas_nasname")
+  @@map("nas")
+}

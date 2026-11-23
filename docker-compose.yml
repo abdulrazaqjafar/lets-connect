@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lets-connect-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lets_connect
+    volumes:
+      - lets_connect_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lets_connect"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  freeradius:
+    build: ./deploy/freeradius
+    container_name: lets-connect-radius
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: lets_connect
+
+  web:
+    build: .
+    container_name: lets-connect-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "80:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/lets_connect?schema=public
+      AUTH_SECRET: lets-connect-prod-change-me
+      CLOUD_RADIUS_IP: "18.199.177.29"
+      NEXT_PUBLIC_CLOUD_RADIUS_IP: "18.199.177.29"
+      RADIUS_HOST: "18.199.177.29"
+      NEXT_PUBLIC_APP_URL: "http://tech-spherewifi.xyz"
+      NEXT_PUBLIC_APP_HOST: "tech-spherewifi.xyz"
+      PORTAL_DOMAIN: "tech-spherewifi.xyz"
+      NEXT_PUBLIC_PORTAL_URL: "http://18.199.177.29"
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+
+volumes:
+  lets_connect_pg:
