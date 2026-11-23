@@ -13,9 +13,9 @@ type LogoProps = {
 };
 
 const SIZES = {
-  sm: { width: 120, height: 120, className: "h-9 w-auto" },
-  md: { width: 160, height: 160, className: "h-11 w-auto" },
-  lg: { width: 220, height: 220, className: "h-14 w-auto sm:h-16" },
+  sm: { width: 160, height: 160, className: "h-12 w-auto max-w-[9rem]" },
+  md: { width: 220, height: 220, className: "h-16 w-auto max-w-[11rem]" },
+  lg: { width: 280, height: 280, className: "h-20 w-auto max-w-[14rem] sm:h-24" },
 } as const;
 
 /** Official Lets Connect brand mark + wordmark */

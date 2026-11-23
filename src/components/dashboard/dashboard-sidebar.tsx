@@ -111,8 +111,8 @@ export function DashboardSidebar() {
 
   return (
     <aside className="print:hidden lc-sidebar flex w-full flex-col md:fixed md:inset-y-0 md:w-[17.5rem]">
-      <div className="border-b border-white/8 px-5 py-5">
-        <BrandLogo inverted size="sm" />
+      <div className="border-b border-white/8 px-4 py-4">
+        <BrandLogo inverted size="md" className="w-full justify-center" />
       </div>
 
       <div className="px-3 pt-4 md:flex-1 md:overflow-y-auto">
