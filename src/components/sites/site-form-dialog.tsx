@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { siteFormSchema, type SiteFormValues } from "@/lib/sites";
+import { VENUE_OPTIONS } from "@/lib/venue";
 
 type SiteFormDialogProps = {
   open: boolean;
@@ -27,6 +28,7 @@ const defaults: SiteFormValues = {
   name: "",
   location: "",
   routerModel: "",
+  venueType: "OTHER",
 };
 
 export function SiteFormDialog({
@@ -66,8 +68,8 @@ export function SiteFormDialog({
         <DialogHeader>
           <DialogTitle>Add a new site</DialogTitle>
           <DialogDescription>
-            Register a Wi‑Fi location. NAS ID and RADIUS secret are generated
-            automatically.
+            Hotspot venue (guesthouse, café, daladala…). NAS ID and RADIUS secret
+            are generated automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -80,7 +82,7 @@ export function SiteFormDialog({
             <Label htmlFor="site-name">Name</Label>
             <Input
               id="site-name"
-              placeholder="Mwenge Hotspot"
+              placeholder="Mwenge Lodge Wi‑Fi"
               {...form.register("name")}
             />
             {form.formState.errors.name && (
@@ -88,6 +90,24 @@ export function SiteFormDialog({
                 {form.formState.errors.name.message}
               </p>
             )}
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="venueType">Venue type</Label>
+            <select
+              id="venueType"
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              {...form.register("venueType")}
+            >
+              {VENUE_OPTIONS.map((v) => (
+                <option key={v.value} value={v.value}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500">
+              {VENUE_OPTIONS.find((v) => v.value === form.watch("venueType"))?.blurb}
+            </p>
           </div>
 
           <div className="grid gap-1.5">

@@ -72,7 +72,31 @@ enum SupportTicketPriority {
 enum NotificationChannel {
   EMAIL
   SMS
+  WHATSAPP
   IN_APP
+}
+
+enum PortalRedirectStatus {
+  UNKNOWN
+  OK
+  BROKEN
+}
+
+enum VenueType {
+  GUESTHOUSE
+  CAFE
+  RESTAURANT
+  BUS
+  CAMPUS
+  EVENT
+  OFFICE
+  OTHER
+}
+
+enum RadiusSyncStatus {
+  PENDING
+  SYNCED
+  FAILED
 }
 
 enum NotificationStatus {
@@ -259,6 +283,10 @@ model Site {
   brandLogoUrl      String?
   brandPrimaryColor String?  @default("#F78E1E")
   brandAccentColor  String?
+  /// Custom portal host e.g. wifi.jinalake.co.tz (CNAME → cloud)
+  brandDomain       String?  @unique
+  /// Hotspot venue vertical (guesthouse, café, daladala, …)
+  venueType         VenueType @default(OTHER)
   /// Preferred local payment gateway for this site's portal
   paymentProvider   PaymentProvider @default(SNIPPE)
 
@@ -267,6 +295,11 @@ model Site {
   /// Last successful RouterOS API health check
   routerLastSeenAt   DateTime?
   routerHealthJson   Json?
+
+  /// Captive portal redirect health (login.html → /portal/{siteId})
+  portalRedirectStatus    PortalRedirectStatus @default(UNKNOWN)
+  portalRedirectCheckedAt DateTime?
+  portalRedirectDetail    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -278,10 +311,12 @@ model Site {
   portalSessions PortalSession[]
   cashierSites   CashierSite[]
   supportTickets SupportTicket[]
+  radiusSyncJobs RadiusSyncJob[]
 
   @@unique([ownerId, slug])
   @@index([ownerId])
   @@index([status])
+  @@index([venueType])
   @@map("sites")
 }
 
@@ -344,6 +379,10 @@ model Voucher {
   buyerEmail String?
   notes      String?
 
+  /// Offline-tolerant: DB can activate before RADIUS catches up
+  radiusSyncStatus RadiusSyncStatus @default(PENDING)
+  radiusSyncedAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -351,13 +390,36 @@ model Voucher {
   package        Package         @relation(fields: [packageId], references: [id], onDelete: Restrict)
   transactions   Transaction[]
   portalSessions PortalSession[]
+  radiusSyncJobs RadiusSyncJob[]
 
   @@unique([siteId, code])
   @@index([status])
   @@index([expiresAt])
   @@index([packageId])
   @@index([batchId])
+  @@index([radiusSyncStatus])
   @@map("vouchers")
+}
+
+/// Queue RADIUS writes when cloud/RADIUS is slow or briefly down (cash + portal)
+model RadiusSyncJob {
+  id        String           @id @default(cuid())
+  siteId    String
+  voucherId String
+  mac       String?
+  status    RadiusSyncStatus @default(PENDING)
+  attempts  Int              @default(0)
+  lastError String?
+  nextRunAt DateTime         @default(now())
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRunAt])
+  @@index([voucherId])
+  @@map("radius_sync_jobs")
 }
 
 /// Payment provider webhook / checkout audit log

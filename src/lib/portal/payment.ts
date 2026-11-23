@@ -6,7 +6,6 @@ import { buildAutoLoginUrl } from "@/lib/portal/auto-login";
 import { PortalPaymentError } from "@/lib/portal/errors";
 import { detectMobileMoneyProvider, normalizePhone } from "@/lib/portal/phone";
 import { validityToMinutes } from "@/lib/packages";
-import { activateVoucherInRadius } from "@/lib/radius";
 
 export { PortalPaymentError } from "@/lib/portal/errors";
 
@@ -357,33 +356,37 @@ export async function confirmPortalPayment(input: ConfirmPortalPaymentInput) {
     return { updatedTx, updatedSession, voucher };
   });
 
-  // radcheck password + radreply Mikrotik-Rate-Limit / Session-Timeout
-  try {
-    await activateVoucherInRadius(
-      {
-        ...confirmed.voucher,
-        package: pkg,
-        portalSessions: [{ mac: session.mac }],
-      },
-      { mac: session.mac },
-    );
-  } catch (error) {
-    console.error("[radius] failed to activate portal voucher", error);
-  }
+  const { activateVoucherWithRetry } = await import("@/lib/radius-sync-queue");
+  await activateVoucherWithRetry({
+    voucherId: confirmed.voucher.id,
+    siteId: transaction.siteId,
+    mac: session.mac,
+  });
 
   try {
     const siteRow = await prisma.site.findUnique({
       where: { id: transaction.siteId },
-      select: { name: true, ownerId: true },
+      select: { name: true, brandName: true, ownerId: true },
     });
     if (siteRow) {
-      const { notifyPaymentSuccess } = await import("@/lib/notifications");
+      const { notifyPaymentSuccess, notifyWifiGuest } = await import(
+        "@/lib/notifications"
+      );
+      const { formatValidity } = await import("@/lib/packages");
       await notifyPaymentSuccess({
         ownerId: siteRow.ownerId,
         phone: session.phone,
         amount: confirmed.updatedTx.amount,
         currency: confirmed.updatedTx.currency,
-        siteName: siteRow.name,
+        siteName: siteRow.brandName || siteRow.name,
+      });
+      await notifyWifiGuest({
+        ownerId: siteRow.ownerId,
+        phone: session.phone,
+        brandName: siteRow.brandName || siteRow.name,
+        packageLabel: formatValidity(pkg.validityValue, pkg.validityUnit),
+        code: confirmed.voucher.code,
+        validUntil: confirmed.voucher.validUntil,
       });
     }
   } catch (error) {

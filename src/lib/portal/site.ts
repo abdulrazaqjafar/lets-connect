@@ -28,6 +28,13 @@ async function findPortalSiteRow(ctx: ParsedPortalContext) {
     if (bySlug) return bySlug;
   }
 
+  if (ctx.brandDomain) {
+    const byDomain = await prisma.site.findFirst({
+      where: { brandDomain: ctx.brandDomain.toLowerCase() },
+    });
+    if (byDomain) return byDomain;
+  }
+
   if (process.env.NODE_ENV !== "production") {
     return prisma.site.findFirst({
       orderBy: { createdAt: "asc" },

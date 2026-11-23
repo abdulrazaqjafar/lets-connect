@@ -19,6 +19,32 @@ const brandingSchema = z.object({
     .regex(/^#[0-9A-Fa-f]{6}$/)
     .nullable()
     .optional(),
+  brandDomain: z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .trim()
+        .max(120)
+        .regex(
+          /^[a-z0-9.-]+\.[a-z]{2,}$/i,
+          "Use a hostname like wifi.yourbrand.co.tz",
+        ),
+    ])
+    .nullable()
+    .optional(),
+  venueType: z
+    .enum([
+      "GUESTHOUSE",
+      "CAFE",
+      "RESTAURANT",
+      "BUS",
+      "CAMPUS",
+      "EVENT",
+      "OFFICE",
+      "OTHER",
+    ])
+    .optional(),
   paymentProvider: z
     .enum(["SNIPPE", "SELCOM", "CLICKPESA", "AZAMPAY", "MANUAL"])
     .optional(),
@@ -42,6 +68,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     const values = brandingSchema.parse(await request.json());
     const logo =
       values.brandLogoUrl === "" ? null : values.brandLogoUrl;
+    const domain =
+      values.brandDomain === undefined
+        ? undefined
+        : values.brandDomain === "" || values.brandDomain === null
+          ? null
+          : values.brandDomain.toLowerCase();
 
     const site = await prisma.site.update({
       where: { id: param.id },
@@ -56,6 +88,8 @@ export async function PATCH(request: Request, context: RouteContext) {
           values.brandAccentColor === undefined
             ? undefined
             : values.brandAccentColor,
+        brandDomain: domain,
+        venueType: values.venueType,
         paymentProvider: values.paymentProvider,
         routerHost: values.routerHost === undefined ? undefined : values.routerHost,
         routerUsername:
@@ -71,10 +105,15 @@ export async function PATCH(request: Request, context: RouteContext) {
         brandLogoUrl: true,
         brandPrimaryColor: true,
         brandAccentColor: true,
+        brandDomain: true,
+        venueType: true,
         paymentProvider: true,
         routerHost: true,
         routerUsername: true,
         routerPort: true,
+        portalRedirectStatus: true,
+        portalRedirectCheckedAt: true,
+        portalRedirectDetail: true,
       },
     });
 

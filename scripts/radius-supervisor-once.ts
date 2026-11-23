@@ -1,12 +1,15 @@
 import "dotenv/config";
 import { expireDueVouchers } from "../src/lib/radius/service";
+import { processRadiusSyncQueue } from "../src/lib/radius-sync-queue";
 
-expireDueVouchers(200)
-  .then((result) => {
-    console.log(JSON.stringify(result, null, 2));
-    process.exit(result.errors.length ? 1 : 0);
-  })
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+async function main() {
+  const expired = await expireDueVouchers(200);
+  const sync = await processRadiusSyncQueue(40);
+  console.log(JSON.stringify({ expired, sync }, null, 2));
+  if (expired.errors.length) process.exit(1);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

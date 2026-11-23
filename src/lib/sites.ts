@@ -5,6 +5,16 @@ export const siteFormSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   location: z.string().trim().min(1, "Location is required").max(200),
   routerModel: z.string().trim().min(1, "Router model is required").max(80),
+  venueType: z.enum([
+    "GUESTHOUSE",
+    "CAFE",
+    "RESTAURANT",
+    "BUS",
+    "CAMPUS",
+    "EVENT",
+    "OFFICE",
+    "OTHER",
+  ]),
 });
 
 export type SiteFormValues = z.infer<typeof siteFormSchema>;

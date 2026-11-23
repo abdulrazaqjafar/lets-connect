@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { validityToMinutes } from "@/lib/packages";
-import { activateVoucherInRadius } from "@/lib/radius";
 import { buildAutoLoginUrl } from "@/lib/portal/auto-login";
 import { PortalPaymentError } from "@/lib/portal/errors";
 
@@ -84,17 +83,33 @@ export async function redeemCashVoucher(input: {
       })
     : voucher;
 
+  const { activateVoucherWithRetry } = await import("@/lib/radius-sync-queue");
+  const sync = await activateVoucherWithRetry({
+    voucherId: updated.id,
+    siteId: site.id,
+    mac: input.mac,
+  });
+
+  const siteBrand = await prisma.site.findUnique({
+    where: { id: site.id },
+    select: { brandName: true, name: true, ownerId: true },
+  });
   try {
-    await activateVoucherInRadius(
-      {
-        ...updated,
-        package: updated.package,
-        portalSessions: input.mac ? [{ mac: input.mac }] : [],
-      },
-      { mac: input.mac },
-    );
+    const { notifyWifiGuest } = await import("@/lib/notifications");
+    const { formatValidity } = await import("@/lib/packages");
+    await notifyWifiGuest({
+      ownerId: siteBrand?.ownerId,
+      phone: updated.buyerPhone,
+      brandName: siteBrand?.brandName || siteBrand?.name || "Wi‑Fi",
+      packageLabel: formatValidity(
+        updated.package.validityValue,
+        updated.package.validityUnit,
+      ),
+      code: updated.code,
+      validUntil: updated.validUntil,
+    });
   } catch (error) {
-    console.error("[radius] cash voucher activate failed", error);
+    console.error("[notify] cash voucher guest notify failed", error);
   }
 
   const username = updated.code;
@@ -114,5 +129,7 @@ export async function redeemCashVoucher(input: {
     loginPassword: password,
     linkLoginOnly: input.linkLoginOnly ?? null,
     autoLoginUrl,
+    radiusSynced: sync.synced,
+    radiusQueued: sync.queued,
   };
 }

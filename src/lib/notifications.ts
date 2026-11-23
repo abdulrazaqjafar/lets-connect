@@ -90,6 +90,15 @@ async function deliverNotification(id: string) {
     return;
   }
 
+  if (note.channel === "WHATSAPP") {
+    console.info("[notify:whatsapp:queued-skip]", note.recipient, note.body);
+    await prisma.notification.update({
+      where: { id },
+      data: { status: "SENT", sentAt: new Date(), error: "use_notifyWifiGuest" },
+    });
+    return;
+  }
+
   // SMS — Africa's Talking / Beem style stub
   const smsKey = process.env.SMS_API_KEY?.trim();
   if (!smsKey) {
@@ -161,5 +170,111 @@ export async function notifyPaymentSuccess(opts: {
     recipient: opts.ownerId,
     subject: "Payment received",
     body,
+  });
+}
+
+function toTzWhatsAppDigits(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("255") && digits.length >= 12) return digits.slice(0, 12);
+  if (digits.startsWith("0") && digits.length >= 10) return `255${digits.slice(1, 10)}`;
+  if (digits.length === 9) return `255${digits}`;
+  return digits || null;
+}
+
+/**
+ * Notify the Wi‑Fi end-user after pay / voucher redeem (SMS + WhatsApp).
+ * Message: connected, duration, code.
+ */
+export async function notifyWifiGuest(opts: {
+  ownerId?: string | null;
+  phone?: string | null;
+  brandName: string;
+  packageLabel: string;
+  code: string;
+  validUntil?: Date | null;
+}) {
+  if (!opts.phone) return;
+
+  const until = opts.validUntil
+    ? opts.validUntil.toLocaleString("en-TZ", { timeZone: "Africa/Dar_es_Salaam" })
+    : opts.packageLabel;
+  const body = `${opts.brandName}: Umeunganishwa Wi‑Fi. Muda: ${opts.packageLabel}. Code: ${opts.code}. Inaisha: ${until}.`;
+
+  await queueNotification({
+    userId: opts.ownerId,
+    channel: "SMS",
+    template: "wifi.connected",
+    recipient: opts.phone,
+    body,
+    metadata: { code: opts.code },
+  });
+
+  const wa = toTzWhatsAppDigits(opts.phone);
+  if (!wa) return;
+
+  const waToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  const waPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
+
+  if (waToken && waPhoneId) {
+    const row = await prisma.notification.create({
+      data: {
+        userId: opts.ownerId ?? null,
+        channel: "WHATSAPP",
+        template: "wifi.connected",
+        recipient: wa,
+        body,
+        status: "PENDING",
+        metadata: { code: opts.code },
+      },
+    });
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/${waPhoneId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${waToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: wa,
+            type: "text",
+            text: { body },
+          }),
+        },
+      );
+      if (!res.ok) throw new Error(`WhatsApp ${res.status}: ${await res.text()}`);
+      await prisma.notification.update({
+        where: { id: row.id },
+        data: { status: "SENT", sentAt: new Date() },
+      });
+    } catch (error) {
+      await prisma.notification.update({
+        where: { id: row.id },
+        data: {
+          status: "FAILED",
+          error: error instanceof Error ? error.message : "WhatsApp failed",
+        },
+      });
+    }
+    return;
+  }
+
+  // No Cloud API — still record + log wa.me deep link for operators
+  const link = `https://wa.me/${wa}?text=${encodeURIComponent(body)}`;
+  console.info("[notify:whatsapp:demo]", wa, link);
+  await prisma.notification.create({
+    data: {
+      userId: opts.ownerId ?? null,
+      channel: "WHATSAPP",
+      template: "wifi.connected",
+      recipient: wa,
+      body,
+      status: "SENT",
+      sentAt: new Date(),
+      error: "demo_logged",
+      metadata: { waMe: link, code: opts.code },
+    },
   });
 }

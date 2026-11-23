@@ -27,6 +27,8 @@ export type ParsedPortalContext = {
   linkLoginOnly: string;
   nasIdentifier: string | null;
   siteSlug: string | null;
+  /** Operator custom portal host e.g. wifi.jinalake.co.tz */
+  brandDomain: string | null;
   clientIp: string | null;
   chapId: string | null;
   chapChallenge: string | null;
@@ -54,6 +56,7 @@ export function parsePortalSearchParams(
       linkLoginOnly: String(raw["link-login-only"] ?? ""),
       nasIdentifier: null,
       siteSlug: typeof raw.site === "string" ? raw.site : null,
+      brandDomain: null,
       clientIp: typeof raw.ip === "string" ? raw.ip : null,
       chapId: typeof raw["chap-id"] === "string" ? raw["chap-id"] : null,
       chapChallenge:
@@ -74,6 +77,7 @@ export function parsePortalSearchParams(
     linkLoginOnly: data["link-login-only"],
     nasIdentifier: data.nas ?? data["nas-id"] ?? data.identity ?? null,
     siteSlug: data.site ?? null,
+    brandDomain: null,
     clientIp: data.ip ?? null,
     chapId: data["chap-id"] ?? null,
     chapChallenge: data["chap-challenge"] ?? null,
